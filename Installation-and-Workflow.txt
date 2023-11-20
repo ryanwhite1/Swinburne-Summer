@@ -1,0 +1,10 @@
+Install WSL:
+ - https://learn.microsoft.com/en-us/windows/wsl/install
+Install VSCode:
+ - https://code.visualstudio.com/download
+Follow the instructions to use WSL with VSCode:
+ - https://learn.microsoft.com/en-us/windows/wsl/tutorials/wsl-vscode
+ 
+1. Open WSL
+2. `cd` to the COMPAS directory within Swinburne-Summer
+3. Run `code ./` which will open the code within WSL in VSCode. 
