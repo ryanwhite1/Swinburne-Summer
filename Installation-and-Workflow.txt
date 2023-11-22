@@ -7,4 +7,6 @@ Follow the instructions to use WSL with VSCode:
  
 1. Open WSL
 2. `cd` to the COMPAS directory within Swinburne-Summer
+	2.1. `cd ..` all the way to the base directory. 
+	2.2. Change directory to `mnt\c\` and go from there.
 3. Run `code ./` which will open the code within WSL in VSCode. 
