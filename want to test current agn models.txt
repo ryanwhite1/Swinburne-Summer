@@ -1,0 +1,19 @@
+want to test current agn models
+read papers and analyse methods
+eventually want to reproduce some models 
+
+look what disc profiles are used in the literature
+both for the agn gas and stellar distribution
+look at star formation around agn
+
+shmuel gilbaum - the effect of thermal torques on AGN disc migration traps 
+	- could use this for analytic agn profile
+yang 2019 - agn disks harden the mass distribution of stellar mass binary black hole mergers
+
+peters equations for GW emission
+surfinBH code 
+
+
+semi major axis at which two objects become bound relates to their keplerian orbit velocity and the velocity dispersion at that point in the disk - if dispersion higher, systems are unstable
+
+simple version in week or two

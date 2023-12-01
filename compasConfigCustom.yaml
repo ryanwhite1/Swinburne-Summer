@@ -10,7 +10,7 @@ booleanChoices:
 
     ### LOGISTICS
 #    --debug-to-file: False                                                # Default: False
-   --detailed-output: False                                              # Default: False                                                                                                                                                              # WARNING! this creates a data heavy file
+#    --detailed-output: False                                              # Default: False                                                                                                                                                              # WARNING! this creates a data heavy file
 #    --enable-warnings: False                                              # Default: False                                                                                                                                                              # option to enable/disable warning messages
 #    --errors-to-file: False                                               # Default: False
 #    --evolve-unbound-systems: True                                        # Default: True
@@ -77,7 +77,7 @@ numericalChoices:
 #    --log-level: 0                                                        # Default: 0
 #    --maximum-evolution-time: 13700.00                                    # Default: 13700.00                                                                                                                                                           # maximum physical time a system can be evolved [Myr]
 #    --maximum-number-timestep-iterations: 99999                           # Default: 99999
-   --number-of-systems: 10000                                               # Default: 10                                                                                                                                                                 # number of systems per batch
+   --number-of-systems: 100000                                               # Default: 10                                                                                                                                                                 # number of systems per batch
 #    --timestep-multiplier: 1.000000                                       # Default: 1.000000                                                                                                                                                           # optional multiplier relative to default time step duration
 
     ### STELLAR PROPERTIES
@@ -210,7 +210,7 @@ stringChoices:
 
     ### STELLAR PROPERTIES
 #    --chemically-homogeneous-evolution: 'PESSIMISTIC'                     # Default: 'PESSIMISTIC'                 # Options: ['PESSIMISTIC','OPTIMISTIC','NONE']                                                                                       # chemically homogeneous evolution
-#    --envelope-state-prescription: 'LEGACY'                               # Default: 'LEGACY'                      # Options: ['FIXED_TEMPERATURE','HURLEY','LEGACY']
+   --envelope-state-prescription: 'HURLEY'                               # Default: 'LEGACY'                      # Options: ['FIXED_TEMPERATURE','HURLEY','LEGACY']
 #    --initial-mass-function: 'KROUPA'                                     # Default: 'KROUPA'                      # Options: ['KROUPA','UNIFORM','POWERLAW','SALPETER']
 #    --luminous-blue-variable-prescription: 'HURLEY_ADD'                   # Default: 'HURLEY_ADD'                  # Options: ['BELCZYNSKI','HURLEY','HURLEY_ADD','NONE']
 #    --mass-loss-prescription: 'FLEXIBLE2023'                              # Default: 'FLEXIBLE2023'                # Options: ['FLEXIBLE2023','BELCZYNSKI2010','HURLEY','NONE']
@@ -218,12 +218,12 @@ stringChoices:
 #    --RSG-mass-loss: 'DECIN2023'                                          # Default: 'DECIN2023'                   # Options: ['NJ90','KEE2021','YANG2023','DECIN2023','BEASOR2020','VINKSABHAHIT2023','NONE']
 #    --VMS-mass-loss: 'SABHAHIT2023'                                       # Default: 'SABHAHIT2023'                # Options: ['SABHAHIT2023','BESTENLEHNER2020','VINK2011','NONE']
 #    --WR-mass-loss: 'SANDERVINK2023'                                      # Default: 'SANDERVINK2023'              # Options: ['SHENAR2019','SANDERVINK2023','BELCZYNSKI2010']
-#    --metallicity-distribution: 'ZSOLAR'                                  # Default: 'ZSOLAR'                      # Options: ['LOGUNIFORM','ZSOLAR']
+   --metallicity-distribution: 'LOGUNIFORM'                                  # Default: 'ZSOLAR'                      # Options: ['LOGUNIFORM','ZSOLAR']
 #    --pulsational-pair-instability-prescription: 'MARCHANT'               # Default: 'MARCHANT'                    # Options: ['FARMER','MARCHANT','STARTRACK','COMPAS']
 
     ### BINARY PROPERTIES
-#    --eccentricity-distribution: 'ZERO'                                   # Default: 'ZERO'                        # Options: ['SANA2012','DUQUENNOYMAYOR1991','GELLER+2013','THERMAL','FLAT','ZERO']
-#    --mass-ratio-distribution: 'FLAT'                                     # Default: 'FLAT'                        # Options: ['SANA2012','DUQUENNOYMAYOR1991','FLAT']
+   --eccentricity-distribution: 'SANA2012'                                   # Default: 'ZERO'                        # Options: ['SANA2012','DUQUENNOYMAYOR1991','GELLER+2013','THERMAL','FLAT','ZERO']
+   --mass-ratio-distribution: 'SANA2012'                                     # Default: 'FLAT'                        # Options: ['SANA2012','DUQUENNOYMAYOR1991','FLAT']
 #    --orbital-period-distribution: 'FLATINLOG'                            # Default: 'FLATINLOG'                   # Options: ['FLATINLOG']
 #    --rotational-velocity-distribution: 'ZERO'                            # Default: 'ZERO'                        # Options: ['VLTFLAMES','HURLEY','ZERO']
 #    --semi-major-axis-distribution: 'FLATINLOG'                           # Default: 'FLATINLOG'                   # Options: ['SANA2012','DUQUENNOYMAYOR1991','FLATINLOG']
