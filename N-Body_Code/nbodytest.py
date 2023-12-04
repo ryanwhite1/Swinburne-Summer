@@ -20,8 +20,8 @@ nt = int((Tmax - 0) / dt) + 1
 NsBH = 10
 NsBHMasses = np.ones(NsBH) * 10
 SMBHMass = 1e8
-r_s = 2 * 4.3 * 10**-3 * SMBHMass / 9e10
-Nr_s = 1e4
+r_s = 2 * 4.3e-3 * SMBHMass / 9e10  # 2GM / c^2     units of pc
+Nr_s = 1e4      # number of schwarzschild radii to initialise the sim with respect to
 lenscale = Nr_s * r_s
 agn = AGNDisk(SMBHMass, lenscale)
 
@@ -31,7 +31,7 @@ positions, velocities = perform_sim(Tmax, dt, pos, masses, vel, softening, agn, 
 times = np.linspace(0, Tmax, nt)
 real_times = time_convert(times, SMBHMass + sum(NsBHMasses), lenscale)
 
-animate_sim(positions, 'mig_test', 20, every=10, times=[True, real_times])
+# animate_sim(positions, 'mig_test', 20, every=10, times=[True, real_times])
 
 
 fig, axes = plt.subplots(nrows=2)
