@@ -14,12 +14,12 @@ import time
 from CommonTools import *
 
 
-Tmax = 10000
+Tmax = 2000
 dt = 0.1
 nt = int((Tmax - 0) / dt) + 1
 NsBH = 10
 NsBHMasses = np.ones(NsBH) * 10
-SMBHMass = 4e6
+SMBHMass = 1e8
 r_s = 2 * 4.3 * 10**-3 * SMBHMass / 9e10
 Nr_s = 1e4
 lenscale = Nr_s * r_s
@@ -31,17 +31,20 @@ positions, velocities = perform_sim(Tmax, dt, pos, masses, vel, softening, agn, 
 times = np.linspace(0, Tmax, nt)
 real_times = time_convert(times, SMBHMass + sum(NsBHMasses), lenscale)
 
-# animate_sim(positions, 'mig_test', 20, every=10, times=[True, real_times])
+animate_sim(positions, 'mig_test', 20, every=10, times=[True, real_times])
 
 
-fig, ax = plt.subplots()
+fig, axes = plt.subplots(nrows=2)
 step = 5
 for i in range(1, 11):
     radii = np.array([np.linalg.norm(positions[i, :, j]) for j in range(0, nt, step)])
     vel_mags = np.array([np.linalg.norm(velocities[i, :, j]) for j in range(0, nt, step)])
     semi_majors = - radii / (radii * vel_mags**2 - 2)
-    ax.plot(real_times[::step], semi_majors * Nr_s)
-ax.set(yscale='log', xlabel="Time (Myr)", ylabel="Semi-Major Axis ($R_s$)")
+    eccentricities = np.array([eccentricity(positions[i, :, j], velocities[i, :, j]) for j in range(0, nt, step)])
+    axes[0].plot(real_times[::step], semi_majors * Nr_s)
+    axes[1].plot(real_times[::step], eccentricities, lw=0.5)
+axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
+axes[1].set(xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.savefig('NBodyTest.png', dpi=400, bbox_inches='tight')
-# fig.savefig('MigrationTest.png', dpi=400, bbox_inches='tight')
-fig.savefig('CaptureTest.png', dpi=400, bbox_inches='tight')
+fig.savefig('MigrationTest.png', dpi=400, bbox_inches='tight')
+# fig.savefig('CaptureTest2.png', dpi=400, bbox_inches='tight')

@@ -11,6 +11,179 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 import time
 
+# class AGNDisk(object):
+#     def __init__(self, smbhmass, lenscale):
+#         '''
+#         Parameters
+#         ----------
+#         smbhmass : float
+#             Mass of the SMBH in units of solar masses.
+#         lenscale : float
+#             Characteristic length scale of the simulation (units of pc)
+#         '''
+#         self.mass = smbhmass    # sol masses
+#         self.mass_ratio = smbhmass / 1e8
+#         self.r_g = 4.3e-3 * self.mass / 9e10 # GM/c^2 in units of pc
+        
+#         self.lenscale = lenscale    # pc
+#         self.lenscale_m = lenscale * 3.086e16   # m
+#         self.lenscale_rs = self.lenscale / (2 * self.r_g)
+#         self.timescale = np.sqrt(self.lenscale_m**3 / (4.3e-3 * self.mass * 3.086e16 * 1000**2))   # s
+#         self.velscale = np.sqrt(4.3e-3 * self.mass / self.lenscale) * 1000  # m/s
+#         self.massscale = self.mass * 1.98e30
+        
+#         # self.timescale = time_convert(1, self.mass, lenscale) * 31536000000000.0    # timescale in seconds
+    
+    
+#     def migration_ts(self, mass, radius):
+#         '''McKernan et al (2018)'''
+#         surf_dens_ratio = 10**5 / self.disk_surfdens(radius) # (sigma / 10^5)^-1
+#         mass_ratio = 5 / mass # (mass / 5M_odot)^-1
+#         scale_height_ratio = (self.disk_aspectratio(radius) / 0.02)**2 # assume center of mass radius is just orbital radius, i.e. M_smbh >> M_bh
+#         orbit_ratio = (radius / (10**4 * self.r_g))**(-1/2)
+#         ts = 38 * orbit_ratio * mass_ratio * scale_height_ratio * surf_dens_ratio * self.mass_ratio**(3/2)
+#         return ts
+    
+#     def get_forces(self, mass, position, vel):
+#         '''
+#         Parameters
+#         ----------
+#         mass : float
+#             Mass of the migrating object
+#         position : (1x3) np.array
+#             Position (x, y, z) in units of Schwarzschild radii from the origin SMBH
+#         # radius : float
+#         #     Radius from the SMBH in units of its Schwarzschild radius.
+#         '''
+#         x, y, z = position
+#         radius = np.linalg.norm(position)
+#         # radial_vec = np.array([x, y, 0]) / radius
+#         theta_vec = np.array([-y, x, 0]) / radius
+#         nondim_mig = self.mig_force(mass, radius) * theta_vec * self.lenscale_m / (self.timescale**2 * mass * self.massscale)
+#         # nondim_mig = 0
+#         # nondim_mig = 0
+#         # nondim_damp = self.damp_force(mass, position, vel)
+#         nondim_damp = self.damp_force(mass, position, vel) * self.lenscale_m / self.timescale
+#         print(nondim_mig, nondim_damp)
+        
+#         return nondim_mig + nondim_damp
+    
+#     def mig_force(self, mass, radius):
+#         '''
+#         Parameters
+#         ----------
+#         mass : float
+#             Mass of the migrating object in units of solar masses.
+#         radius : float
+#             Radius from the SMBH in N-Body units.
+#         '''
+#         stefboltz = 5.67 * 10**-8
+#         q = mass / self.mass    # mass ratio of the migrator to the SMBH
+#         # pc_to_m = 3.086 * 1e16
+#         gamma = 5/3     # adiabatic index
+#         c_v = 14.304    # specific heat capacity of hydrogen H2 gas
+        
+#         logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
+#         radius_m = radius * self.lenscale_m
+#         Sigma = self.disk_surfdens(logr)
+#         rotvel = self.disk_rotvel(logr)
+#         asp_ratio = self.disk_aspectratio(logr)
+#         tau = self.disk_opacity(logr) * Sigma / 2  # tau = kappa * Sigma / 2
+#         tau_eff = 3 * tau / 8 + np.sqrt(3) / 4 + 1 / (4 * tau)
+#         # print(tau, tau_eff)
+        
+#         # alpha = - d(ln Sigma)/d(ln r)
+#         if logr <= 3:
+#             alpha = - np.log(10)
+#         else:
+#             alpha = np.log(10) * 5/3 
+#         # beta = - d(ln T)/d(ln r)
+#         if logr <= 2.8:
+#             beta = np.log(10) / 2.3 
+#         else:
+#             beta = np.log(10) * 5/6
+#         xi = beta - (gamma - 1) * alpha
+        
+#         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
+#         # print(Theta)
+#         Gamma_0 = (q / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
+#         Gamma_iso =  -0.85 - alpha - 0.9 * beta
+#         Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
+        
+#         Gamma = Gamma_0 * (Gamma_ad * Theta**2 + Gamma_iso) / (Theta + 1)**2
+#         # print(Gamma_0, Gamma_ad, Gamma_iso, Gamma)
+#         return Gamma / radius_m
+    
+#     def damp_force(self, mass, position, vel):
+#         '''
+#         Parameters
+#         ----------
+#         radius : float
+#             Radius from the SMBH in N-Body units.
+#         '''
+#         radius = np.linalg.norm(position)
+#         logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
+#         a = semi_major_axis(position, vel) * self.lenscale_m    # convert semi-major axis to m
+#         h = self.disk_aspectratio(logr)
+#         tdamp = (self.mass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * self.disk_rotvel(logr)) * 1.98e30
+#         e = np.linalg.norm(np.cross(vel, np.cross(position, vel)) - position / radius)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
+#         # print(e)
+#         eps = e / h
+#         t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3) 
+#         f_damp = -2 * np.dot(position, vel) * position / (radius**2 * t_e)
+#         return f_damp
+    
+    
+#     def disk_temp(self, logr):
+#         ''' Returns units of K'''
+#         if logr <= 2.8:
+#             return 10**(-1/2.3 * logr + 6.217)
+#         else:
+#             return 10**(-5/6 * logr + 22/3)
+#     def disk_surfdens(self, logr):
+#         '''+1 in the power to go from g/cm^2 to kg/m^2
+#         Returns units of kg.m^-2'''
+#         if logr <= 3:
+#             return 10**(logr + 3 + 1)
+#         else:
+#             return 10**(-5/3 * logr + 11 + 1)
+#     def disk_rotvel(self, logr):
+#         '''Returns units of m/s'''
+#         v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)) * 1000
+#         # print('rotvel=', v)
+#         return v
+#     def disk_aspectratio(self, logr):
+#         '''Aspect ratio of scale height: h = H / r. Unitless.'''
+#         if logr <= 3:
+#             return 10**(-2/3 * logr - 1/3)
+#         else:
+#             return 10**(0.5 * logr - 3.5)
+        
+#     def disk_opacity(self, logr):
+#         '''-1 in the power to convert from cm^2/g to m^2/kg. Units are in m^2/kg'''
+#         if logr <= 4.3:
+#             return 10**(-0.5 - 1)
+#         elif 4.3 < logr < 4.8:
+#             return 10**(-5.6 * logr + 23.58 - 1)
+#         else:
+#             return 10**(-3.3 - 1)
+        
+#     def disk_optdepth(self, logr):
+#         '''Unitless?'''
+#         if logr <= 3:
+#             return 10**(logr + 2)
+#         else:
+#             return 10**(-2.5 * logr + 12.5)
+        
+        
+#     # def disk_toomre(self, radius):
+#     #     ''''''
+#     #     logr = np.log10(radius)
+#     #     if logr >= -2:
+#     #         return 1 
+#     #     else:
+#     #         return 10**(-5 * logr - 10)
+
 class AGNDisk(object):
     def __init__(self, smbhmass, lenscale):
         '''
@@ -57,36 +230,37 @@ class AGNDisk(object):
         '''
         x, y, z = position
         radius = np.linalg.norm(position)
-        # radial_vec = np.array([x, y, 0]) / radius
+        radial_vec = np.array([x, y, 0]) / radius
         theta_vec = np.array([-y, x, 0]) / radius
-        nondim_mig = self.mig_force(mass, radius)
-        # nondim_damp = self.damp_force(mass, position, vel)
-        nondim_damp = self.damp_force(mass, position, vel)
-        print(nondim_mig, nondim_damp)
-        return  nondim_mig * theta_vec + nondim_damp
+        nondim_mig = self.mig_force(mass, radius) * theta_vec
+        nondim_damp = self.damp_force(mass, position, vel) * radial_vec
+        # print(nondim_mig, nondim_damp)
+        
+        return nondim_mig + nondim_damp
     
     def mig_force(self, mass, radius):
         '''
         Parameters
         ----------
         mass : float
-            Mass of the migrating object in units of solar masses.
+            Mass of the migrating object in N-body units.
         radius : float
             Radius from the SMBH in N-Body units.
         '''
-        stefboltz = 5.67 * 10**-8
+        stefboltz = 5.67 * 10**-8 * self.lenscale_m**2 / self.timescale
         q = mass / self.mass    # mass ratio of the migrator to the SMBH
         # pc_to_m = 3.086 * 1e16
         gamma = 5/3     # adiabatic index
-        c_v = 14.304    # specific heat capacity of hydrogen H2 gas
+        c_v = 14.304 * self.massscale    # specific heat capacity of hydrogen H2 gas
         
         logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
-        radius_m = radius * self.lenscale_m
+        # radius_m = radius * self.lenscale_m
         Sigma = self.disk_surfdens(logr)
         rotvel = self.disk_rotvel(logr)
         asp_ratio = self.disk_aspectratio(logr)
-        tau = self.disk_optdepth(logr) * Sigma / 2  # tau = kappa * Sigma / 2
+        tau = self.disk_opacity(logr) * Sigma / 2  # tau = kappa * Sigma / 2
         tau_eff = 3 * tau / 8 + np.sqrt(3) / 4 + 1 / (4 * tau)
+        # print(tau, tau_eff)
         
         # alpha = - d(ln Sigma)/d(ln r)
         if logr <= 3:
@@ -101,11 +275,14 @@ class AGNDisk(object):
         xi = beta - (gamma - 1) * alpha
         
         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
-        Gamma_0 = (q / asp_ratio)**2 * Sigma * radius_m * rotvel**2
-        Gamma_iso = Gamma_0 * (-0.85 - alpha - 0.9 * beta)
-        Gamma_ad = Gamma_0 / gamma * (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma)
-        Gamma = (Gamma_ad * Theta**2 + Gamma_iso) / (Theta + 1)**2
-        return Gamma / radius_m
+        print(Theta)
+        Gamma_0 = (q / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
+        Gamma_iso =  -0.85 - alpha - 0.9 * beta
+        Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
+        
+        Gamma = Gamma_0 * (Gamma_ad * Theta**2 + Gamma_iso) / (Theta + 1)**2
+        # print(Gamma_0, Gamma_ad, Gamma_iso, Gamma)
+        return Gamma / (radius * mass)
     
     def damp_force(self, mass, position, vel):
         '''
@@ -116,9 +293,9 @@ class AGNDisk(object):
         '''
         radius = np.linalg.norm(position)
         logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
-        a = semi_major_axis(position, vel) * self.lenscale_m    # convert semi-major axis to m
+        a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
-        tdamp = (self.mass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * self.disk_rotvel(logr)) * 1.98e30
+        tdamp = (self.mass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * self.disk_rotvel(logr))
         e = np.linalg.norm(np.cross(vel, np.cross(position, vel)) - position / radius)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
         # print(e)
         eps = e / h
@@ -137,14 +314,15 @@ class AGNDisk(object):
         '''+1 in the power to go from g/cm^2 to kg/m^2
         Returns units of kg.m^-2'''
         if logr <= 3:
-            return 10**(logr + 3 + 1)
+            val = 10**(logr + 3 + 1)
         else:
-            return 10**(-5/3 * logr + 11 + 1)
+            val = 10**(-5/3 * logr + 11 + 1)
+        return val * self.lenscale_m**2 / self.massscale
     def disk_rotvel(self, logr):
         '''Returns units of m/s'''
         v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)) * 1000
         # print('rotvel=', v)
-        return v
+        return v / self.velscale
     def disk_aspectratio(self, logr):
         '''Aspect ratio of scale height: h = H / r. Unitless.'''
         if logr <= 3:
@@ -155,11 +333,12 @@ class AGNDisk(object):
     def disk_opacity(self, logr):
         '''-1 in the power to convert from cm^2/g to m^2/kg. Units are in m^2/kg'''
         if logr <= 4.3:
-            return 10**(-0.5 - 1)
+            val = 10**(-0.5 - 1)
         elif 4.3 < logr < 4.8:
-            return 10**(-5.6 * logr + 23.58 - 1)
+            val = 10**(-5.6 * logr + 23.58 - 1)
         else:
-            return 10**(-3.3 - 1)
+            val =  10**(-3.3 - 1)
+        return val * self.massscale / self.lenscale_m**2
         
     def disk_optdepth(self, logr):
         '''Unitless?'''
@@ -283,7 +462,7 @@ def AGNBHICs(masses, smbhmass, seed=4080):
     
     # uniformly (and randomly) distribute points in the unit disk
     theta = np.random.uniform(0, 2*np.pi, N)
-    dists = np.random.uniform(0.5, 1, N)
+    dists = np.random.uniform(0.5**3, 1, N)
     R = 1 * np.cbrt(dists)
     x = R * np.cos(theta)
     y = R * np.sin(theta)
@@ -406,7 +585,13 @@ def semi_major_axis(position, velocity):
     vel_mag = np.linalg.norm(velocity)
     a = - radius / (radius * vel_mag**2 - 2)    # https://physics.stackexchange.com/questions/295431/how-can-i-calculate-the-semi-major-axis-from-velocity-position-and-pull
     return a
-    
+
+def eccentricity(position, velocity):
+    '''
+    '''
+    radius = np.linalg.norm(position)
+    e = np.linalg.norm(np.cross(velocity, np.cross(position, velocity)) - position / radius)
+    return e
     
     
 
