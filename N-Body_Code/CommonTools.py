@@ -13,6 +13,8 @@ import time
 
 G_pc = 4.3e-3   # pc.(km/s)^2/M_odot
 c = 3e8     # m/s
+M_odot = 1.98e30 # kg
+pc_to_m = 3.086e16  # m
 
 class AGNDisk(object):
     def __init__(self, smbhmass, lenscale):
@@ -26,24 +28,14 @@ class AGNDisk(object):
         '''
         self.mass = smbhmass    # sol masses
         # self.mass_ratio = smbhmass / 1e8
-        self.r_g = 4.3e-3 * self.mass / 9e10 # GM/c^2 in units of pc
+        self.r_g = G_pc * self.mass / 9e10 # GM/c^2 in units of pc
         
         self.lenscale = lenscale    # pc
-        self.lenscale_m = lenscale * 3.086e16   # m
+        self.lenscale_m = lenscale * pc_to_m   # m
         self.lenscale_rs = self.lenscale / (2 * self.r_g)
-        self.timescale = np.sqrt(self.lenscale_m**3 / (4.3e-3 * self.mass * 3.086e16 * 1000**2))   # s
-        self.velscale = np.sqrt(4.3e-3 * self.mass / self.lenscale) * 1000  # m/s
-        self.massscale = self.mass * 1.98e30    # kg
-    
-    
-    # def migration_ts(self, mass, radius):
-    #     '''McKernan et al (2018)'''
-    #     surf_dens_ratio = 10**5 / self.disk_surfdens(radius) # (sigma / 10^5)^-1
-    #     mass_ratio = 5 / mass # (mass / 5M_odot)^-1
-    #     scale_height_ratio = (self.disk_aspectratio(radius) / 0.02)**2 # assume center of mass radius is just orbital radius, i.e. M_smbh >> M_bh
-    #     orbit_ratio = (radius / (10**4 * self.r_g))**(-1/2)
-    #     ts = 38 * orbit_ratio * mass_ratio * scale_height_ratio * surf_dens_ratio * self.mass_ratio**(3/2)
-    #     return ts
+        self.timescale = np.sqrt(self.lenscale_m**3 / (G_pc * self.mass * pc_to_m * 1000**2))   # s
+        self.velscale = np.sqrt(G_pc * self.mass / self.lenscale) * 1000  # m/s
+        self.massscale = self.mass * M_odot    # kg
     
     def get_forces(self, mass, position, vel):
         '''
@@ -75,21 +67,18 @@ class AGNDisk(object):
         radius : float
             Radius from the SMBH in N-Body units.
         '''
-        stefboltz = 5.67 * 10**-8 * self.lenscale_m**2 * self.timescale
-        # q = mass / self.mass    # mass ratio of the migrator to the SMBH
-        q = mass
-        # pc_to_m = 3.086 * 1e16
+        stefboltz = 5.67 * 10**-8 * self.lenscale_m**2 * self.timescale     # units of J/K^4
+        q = mass    # mass ratio of the migrator to the SMBH - assume SMBH has a mass of 1
         gamma = 5/3     # adiabatic index
-        c_v = 14304 * self.massscale    # specific heat capacity of hydrogen H2 gas
+        c_v = 14304 * self.massscale    # specific heat capacity of hydrogen H2 gas, units are J/K
         
         logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
-        # radius_m = radius * self.lenscale_m
-        Sigma = self.disk_surfdens(logr)
+        Sigma = self.disk_surfdens(logr)        # surface density
         rotvel = self.disk_rotvel(logr)
         asp_ratio = self.disk_aspectratio(logr)
         tau = self.disk_opacity(logr) * Sigma / 2  # tau = kappa * Sigma / 2
         # tau = self.disk_optdepth(logr)
-        tau_eff = 3 * tau / 8 + np.sqrt(3) / 4 + 1 / (4 * tau)
+        tau_eff = 3 * tau / 8 + np.sqrt(3) / 4 + 1 / (4 * tau)      # effective optical depth
         # print(tau, tau_eff)
         
         # alpha = - d(ln Sigma)/d(ln r)
@@ -113,22 +102,25 @@ class AGNDisk(object):
         
         Gamma = Gamma_0 * (Gamma_ad * Theta**2 + Gamma_iso) / (Theta + 1)**2
         # print(Gamma_0, Gamma_ad, Gamma_iso, Gamma)
-        return Gamma / (radius * mass)
+        return Gamma / (radius * mass)      # need to divide by mass to get acceleration
     
     def damp_force(self, mass, position, vel):
-        '''
+        ''' Eccentricity damping force as in Cresswell and Nelson (2007)
         Parameters
         ----------
-        radius : float
-            Radius from the SMBH in N-Body units.
+        mass : float
+        position : 1x3 np.array
+        vel : 1x3 np.array
         '''
         radius = np.linalg.norm(position)
         logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
         a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
+        # velocity = self.disk_angularvel(position, vel)
+        velocity = self.disk_rotvel(logr)
         smbhmass = 1
-        tdamp = (smbhmass**2 * h**4) / (mass * smbhmass * self.disk_surfdens(logr) * a**2 * self.disk_rotvel(logr))
-        e = np.linalg.norm(np.cross(vel, np.cross(position, vel)) - position / radius)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
+        tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
+        e = eccentricity(position, vel)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
         # print(e)
         eps = e / h
         t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3)
@@ -138,29 +130,57 @@ class AGNDisk(object):
     
     
     def disk_temp(self, logr):
-        ''' Returns units of K'''
+        ''' Returns AGN disk temperature with units of K
+        Parameters
+        ----------
+        logr : float
+            log10(radius) where the radius is in units of schwarzschild radii
+        '''
         if logr <= 2.8:
             return 10**(-1/2.3 * logr + 6.217)
         else:
             return 10**(-5/6 * logr + 22/3)
+        
     def disk_surfdens(self, logr):
-        '''+1 in the power to go from g/cm^2 to kg/m^2
-        Returns units of kg.m^-2'''
+        '''AGN Disk surface density, commonly with symbol Sigma. +1 in the power to go from g/cm^2 to kg/m^2
+        Returns units of kg.m^-2, then non-dimensionalised
+        Parameters
+        ----------
+        logr : float
+            log10(radius) where the radius is in units of schwarzschild radii
+        '''
         if logr <= 3:
             val = 10**(logr + 3 + 1)
         else:
             val = 10**(-5/3 * logr + 11 + 1)
         return val * self.lenscale_m**2 / self.massscale
+    
     def disk_rotvel(self, logr):
-        '''Returns units of m/s'''
+        '''Returns units of m/s, then non-dimensionalised
+        Parameters
+        ----------
+        logr : float
+            log10(radius) where the radius is in units of schwarzschild radii
+        '''
         # v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)) * 1000
         # # print('rotvel=', v)
         # return v / self.velscale
         v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)**3) * 1000
         # print('rotvel=', v)
         return v * self.lenscale / self.velscale
+    
+    # def disk_angularvel(self, position, velocity):
+    #     ''' Angular velocity given position and velocity: omega = (||r x v|| / ||r||^2)
+    #     '''
+    #     return np.linalg.norm(np.cross(position, velocity)) / np.linalg.norm(position)**2
+    
     def disk_aspectratio(self, logr):
-        '''Aspect ratio of scale height: h = H / r. Unitless.'''
+        '''Aspect ratio of scale height: h = H / r. Unitless.
+        Parameters
+        ----------
+        logr : float
+            log10(radius) where the radius is in units of schwarzschild radii
+        '''
         if logr <= 3:
             val = 10**(-2/3 * logr - 1/3)
         else:
@@ -168,7 +188,13 @@ class AGNDisk(object):
         return val
         
     def disk_opacity(self, logr):
-        '''-1 in the power to convert from cm^2/g to m^2/kg. Units are in m^2/kg'''
+        '''Commonly with symbol kappa. -1 in the power to convert from cm^2/g to m^2/kg. 
+        Units are in m^2/kg, then non-dimensionalised
+        Parameters
+        ----------
+        logr : float
+            log10(radius) where the radius is in units of schwarzschild radii
+        '''
         if logr <= 4.3:
             val = 10**(-0.5 - 1)
         elif 4.3 < logr < 4.8:
@@ -178,7 +204,11 @@ class AGNDisk(object):
         return val * self.massscale / self.lenscale_m**2
         
     def disk_optdepth(self, logr):
-        '''Unitless?'''
+        '''Unitless?
+        Parameters
+        ----------
+        logr : float
+            log10(radius) where the radius is in units of schwarzschild radii'''
         if logr <= 3:
             return 10**(logr + 2)
         else:
@@ -197,8 +227,16 @@ class AGNDisk(object):
 
 def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured, forces=True):
     '''
+    Parameters
+    ----------
+    captured : list
+        List of *indices* of already-merged BHs. Any index in this list will mean that a BH with that index wont have forces
+        calculated and wont exert forces
+    forces : bool
+        If true, calculates forces from the AGN disk
+    
     '''
-    check_inds = np.setdiff1d(np.arange(len(masses)), captured)
+    check_inds = np.setdiff1d(np.arange(len(masses)), captured)     # find which BH indices are not in the captured list
     
     # first a half-step kick
     vel[:] = vel + 0.5 * dt * accel # note that you must slice arrays to modify them in place in the function!
@@ -207,7 +245,6 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
     # then recompute accelerations
     accel[:] = ptg.Accel(pos, masses, softening, parallel=True)
     if forces:
-        # accel[1:] += np.array([agn.get_forces(masses[i], pos[i], vel[i]) for i in range(1, len(pos[:]))])
         for i in check_inds:
             # b = accel[i]
             accel[i] += agn.get_forces(masses[i], pos[i], vel[i])
@@ -219,23 +256,37 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
     
     # now check for captures
     
-    for i, primary in enumerate(check_inds):
+    for i, primary in enumerate(check_inds):    # iterate over all non-merged BHs
         r1 = np.linalg.norm(pos[primary])
         m1 = masses[primary]
-        for j, secondary in enumerate(check_inds[i + 1:]):
+        for j, secondary in enumerate(check_inds[i + 1:]):  # now iterate over every other BH 
             r2 = np.linalg.norm(pos[secondary])
             m2 = masses[secondary]
-            R_mH = np.cbrt((m1 + m2) / (3 * masses[0])) * (r1 + r2) / 2 
+            R_mH = np.cbrt((m1 + m2) / (3 * masses[0])) * (r1 + r2) / 2     # calculate mutual hill radius
             # print(pos[primary] - pos[secondary])
-            dist = np.linalg.norm(pos[primary] - pos[secondary])
-            if dist < R_mH:
+            dist = np.linalg.norm(pos[primary] - pos[secondary])    # calculate the distance between the two BHs at this timestep
+            if dist < R_mH: # check if they within their mutual hill radius
+                ### Below commented out lines check for relative kinetic energy vs binding energy in capture
+                # reduced_mass = 1 / (1 / m1 + 1 / m2)
+                # rel_kin_energy = 0.5 * reduced_mass * np.linalg.norm(vel[primary] - vel[secondary])**2
+                # binding_energy = m1 * m2 / (2 * R_mH)
+                # print(rel_kin_energy, binding_energy)
+                # if rel_kin_energy < binding_energy:
+                #     print("capture!", R_mH, dist)
+                #     print(check_inds)
+                #     captured.append(primary)    # add the primary to the captured list
+                #     captured[:] = captured      # modify in place to update the list outside of this function
+                #     masses[secondary] += masses[primary]    # assume no mass loss in the merger
+                #     masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
+                #     break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
+            
                 print("capture!", R_mH, dist)
                 print(check_inds)
-                captured.append(primary)
-                captured[:] = captured
-                masses[secondary] += masses[primary]
-                masses[primary] = 0
-                break
+                captured.append(primary)    # add the primary to the captured list
+                captured[:] = captured      # modify in place to update the list outside of this function
+                masses[secondary] += masses[primary]    # assume no mass loss in the merger
+                masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
+                break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
             
     # now set the central SMBH/captured BHs to not have changed position or velocity
     for i in captured:
@@ -273,7 +324,7 @@ def perform_sim(Tmax, dt, pos, masses, vel, softening, agn, forces=True):
     velocities[:, :, 0] = vel
     
     i = 0
-    captured = [0]
+    captured = [0]      # list of captured BHs to set them at the origin and not calculate migration, etc. Start with the SMBH 
     while t <= Tmax: # actual simulation loop - this may take a couple minutes to run
         leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured, forces=forces)
         positions[:, :, i] = pos
@@ -295,7 +346,7 @@ def AGNBHICs(masses, smbhmass, seed=4080):
     '''
     N = len(masses)
     # r_s = 4.3 * 10**-3 * smbhmass / (9 * 10**10)
-    # np.random.seed(seed) # seed the RNG for reproducibility
+    np.random.seed(seed) # seed the RNG for reproducibility
     
     # uniformly (and randomly) distribute points in the unit disk
     theta = np.random.uniform(0, 2*np.pi, N)

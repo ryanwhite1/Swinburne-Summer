@@ -34,7 +34,7 @@ real_times = time_convert(times, SMBHMass + sum(NsBHMasses), lenscale)
 # animate_sim(positions, 'mig_test', 20, every=10, times=[True, real_times])
 
 
-fig, axes = plt.subplots(nrows=2)
+fig, axes = plt.subplots(figsize=(10, 10), nrows=2, sharex=True, gridspec_kw={'hspace':0})
 step = 5
 for i in range(1, 11):
     radii = np.array([np.linalg.norm(positions[i, :, j]) for j in range(0, nt, step)])
@@ -44,7 +44,7 @@ for i in range(1, 11):
     axes[0].plot(real_times[::step], semi_majors * Nr_s)
     axes[1].plot(real_times[::step], eccentricities, lw=0.5)
 axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
-axes[1].set(xlabel="Time (Myr)", ylabel='Eccentricity')
+axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.savefig('NBodyTest.png', dpi=400, bbox_inches='tight')
-fig.savefig('MigrationTest2.png', dpi=400, bbox_inches='tight')
+fig.savefig('MigrationTest.png', dpi=400, bbox_inches='tight')
 # fig.savefig('CaptureTest2.png', dpi=400, bbox_inches='tight')
