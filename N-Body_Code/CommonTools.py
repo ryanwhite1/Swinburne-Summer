@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 import time
 
+G_pc = 4.3e-3   # pc.(km/s)^2/M_odot
+c = 3e8     # m/s
+
 class AGNDisk(object):
     def __init__(self, smbhmass, lenscale):
         '''
@@ -55,7 +58,7 @@ class AGNDisk(object):
         '''
         x, y, z = position
         radius = np.linalg.norm(position)
-        radial_vec = np.array([x, y, 0]) / radius
+        radial_vec = np.array([x, y, z]) / radius
         theta_vec = np.array([y, -x, 0]) / radius
         nondim_mig = self.mig_force(mass, radius) * theta_vec
         nondim_damp = self.damp_force(mass, position, vel) * radial_vec
@@ -123,11 +126,13 @@ class AGNDisk(object):
         logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
         a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
-        tdamp = (self.mass**2 * h**4) / (mass * self.mass * self.disk_surfdens(logr) * a**2 * self.disk_rotvel(logr))
+        smbhmass = 1
+        tdamp = (smbhmass**2 * h**4) / (mass * smbhmass * self.disk_surfdens(logr) * a**2 * self.disk_rotvel(logr))
         e = np.linalg.norm(np.cross(vel, np.cross(position, vel)) - position / radius)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
         # print(e)
         eps = e / h
-        t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3) 
+        t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3)
+        # print(t_e)
         f_damp = -2 * np.dot(vel, position) * position / (radius**2 * t_e)
         return f_damp
     
@@ -148,9 +153,12 @@ class AGNDisk(object):
         return val * self.lenscale_m**2 / self.massscale
     def disk_rotvel(self, logr):
         '''Returns units of m/s'''
-        v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)) * 1000
+        # v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)) * 1000
+        # # print('rotvel=', v)
+        # return v / self.velscale
+        v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)**3) * 1000
         # print('rotvel=', v)
-        return v / self.velscale
+        return v * self.lenscale / self.velscale
     def disk_aspectratio(self, logr):
         '''Aspect ratio of scale height: h = H / r. Unitless.'''
         if logr <= 3:
@@ -217,7 +225,7 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
         for j, secondary in enumerate(check_inds[i + 1:]):
             r2 = np.linalg.norm(pos[secondary])
             m2 = masses[secondary]
-            R_mH = np.cbrt((m1 + m2) / (3 * agn.mass)) * (r1 + r2) / r2 
+            R_mH = np.cbrt((m1 + m2) / (3 * masses[0])) * (r1 + r2) / 2 
             # print(pos[primary] - pos[secondary])
             dist = np.linalg.norm(pos[primary] - pos[secondary])
             if dist < R_mH:
@@ -287,7 +295,7 @@ def AGNBHICs(masses, smbhmass, seed=4080):
     '''
     N = len(masses)
     # r_s = 4.3 * 10**-3 * smbhmass / (9 * 10**10)
-    np.random.seed(seed) # seed the RNG for reproducibility
+    # np.random.seed(seed) # seed the RNG for reproducibility
     
     # uniformly (and randomly) distribute points in the unit disk
     theta = np.random.uniform(0, 2*np.pi, N)

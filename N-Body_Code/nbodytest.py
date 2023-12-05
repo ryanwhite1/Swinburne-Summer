@@ -14,14 +14,14 @@ import time
 from CommonTools import *
 
 
-Tmax = 2000
+Tmax = 10000
 dt = 0.1
 nt = int((Tmax - 0) / dt) + 1
 NsBH = 10
 NsBHMasses = np.ones(NsBH) * 10
 SMBHMass = 1e8
 r_s = 2 * 4.3e-3 * SMBHMass / 9e10  # 2GM / c^2     units of pc
-Nr_s = 1e4      # number of schwarzschild radii to initialise the sim with respect to
+Nr_s = 1e3      # number of schwarzschild radii to initialise the sim with respect to
 lenscale = Nr_s * r_s
 agn = AGNDisk(SMBHMass, lenscale)
 
@@ -46,5 +46,5 @@ for i in range(1, 11):
 axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
 axes[1].set(xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.savefig('NBodyTest.png', dpi=400, bbox_inches='tight')
-fig.savefig('MigrationTest.png', dpi=400, bbox_inches='tight')
+fig.savefig('MigrationTest2.png', dpi=400, bbox_inches='tight')
 # fig.savefig('CaptureTest2.png', dpi=400, bbox_inches='tight')
