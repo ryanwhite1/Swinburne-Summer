@@ -67,12 +67,13 @@ torques = np.zeros(len(radii))
 for i, radius in enumerate(radii):
     torques[i] = agn.mig_force(0.00001, radius)
 
+torques *= agn.massscale * agn.lenscale_m**2 / agn.timescale**2 / 1e49 / (1000 * 1e4)
 pos_vals = torques > 0 
 neg_vals = torques <= 0 
 fig, ax = plt.subplots()
 
 ax.scatter(radii[pos_vals] / agn.nondim_rs, torques[pos_vals], s=5, label='negative')
 ax.scatter(radii[neg_vals] / agn.nondim_rs, -torques[neg_vals], c='r', s=5, label='positive')
-ax.set(xscale='log', yscale='log', xlabel="Log(R/R$_s$)", ylabel='abs($\Gamma$)')
+ax.set(xscale='log', yscale='log', xlabel="Log(R/R$_s$)", ylabel='abs($\Gamma$) / 1e49')
 ax.legend()
 fig.savefig('Torque Model.png', dpi=400, bbox_inches='tight')

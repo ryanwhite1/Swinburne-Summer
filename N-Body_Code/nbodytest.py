@@ -14,8 +14,8 @@ import time
 from CommonTools import *
 
 
-Tmax = 20000
-dt = 0.1
+Tmax = 10000
+dt = 0.05
 nt = int((Tmax - 0) / dt) + 1
 NsBH = 10
 NsBHMasses = np.ones(NsBH) * 10

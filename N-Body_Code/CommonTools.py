@@ -91,7 +91,6 @@ class AGNDisk(object):
         q = mass    # mass ratio of the migrator to the SMBH - assume SMBH has a mass of 1
         gamma = 5/3     # adiabatic index
         c_v = 14304 * self.massscale    # specific heat capacity of hydrogen H2 gas, units are J/K
-
         # logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
         logr = np.log10(radius / self.nondim_rs)
         Sigma = self.disk_surfdens(logr)        # surface density
@@ -117,8 +116,7 @@ class AGNDisk(object):
         xi = beta - (gamma - 1) * alpha
         
         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
-        # print(Theta)
-        Gamma_0 = (q / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
+        Gamma_0 = (q * radius / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
         # print(Gamma_0, (q / asp_ratio), Sigma, radius**4, rotvel**2)
         Gamma_iso =  -0.85 - alpha - 0.9 * beta
         Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
@@ -141,8 +139,8 @@ class AGNDisk(object):
         logr = np.log10(radius / self.nondim_rs)
         a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
-        # velocity = self.disk_angularvel(position, vel)
-        velocity = self.disk_rotvel(logr)
+        velocity = self.disk_angularvel(position, vel)
+        # velocity = self.disk_rotvel(logr)
         smbhmass = 1
         tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
         e = eccentricity(position, vel)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
@@ -283,7 +281,7 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
         for i in check_inds:
             # b = accel[i]
             accel[i] += agn.get_forces(masses[i], pos[i], vel[i])
-            # print(b - accel[i])
+            # print(b)
     # then another half-step kick
     vel[:] = vel + 0.5 * dt * accel
     
@@ -319,7 +317,9 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
                 print(check_inds)
                 captured.append(primary)    # add the primary to the captured list
                 captured[:] = captured      # modify in place to update the list outside of this function
-                masses[secondary] += masses[primary]    # assume no mass loss in the merger
+                masses[secondary] += masses[primary]; masses[secondary] *= 0.95   # assume merged mass is 95% of the sum of the original masses
+                pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
+                vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
                 masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
                 break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
             
@@ -506,11 +506,12 @@ def semi_major_axis(position, velocity):
     '''N-Body Units calc'''
     radius = np.linalg.norm(position)
     vel_mag = np.linalg.norm(velocity)
-    a = - radius / (radius * vel_mag**2 - 2)    # https://physics.stackexchange.com/questions/295431/how-can-i-calculate-the-semi-major-axis-from-velocity-position-and-pull
+    a = radius / (2 - radius * vel_mag**2)    # https://physics.stackexchange.com/questions/295431/how-can-i-calculate-the-semi-major-axis-from-velocity-position-and-pull
+    # also found by rearranging the expression v^2 = GM(2/r - 1/a)
     return a
 
 def eccentricity(position, velocity):
-    '''
+    '''https://en.wikipedia.org/wiki/Eccentricity_vector
     '''
     radius = np.linalg.norm(position)
     e = np.linalg.norm(np.cross(velocity, np.cross(position, velocity)) - position / radius)
