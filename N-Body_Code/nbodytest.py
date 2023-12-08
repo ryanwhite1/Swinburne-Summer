@@ -14,7 +14,7 @@ import time
 from CommonTools import *
 
 
-Tmax = 10000
+Tmax = 20000
 dt = 0.1
 nt = int((Tmax - 0) / dt) + 1
 NsBH = 10
@@ -46,5 +46,6 @@ for i in range(1, 11):
 axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
 axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.savefig('NBodyTest.png', dpi=400, bbox_inches='tight')
-fig.savefig('MigrationTest.png', dpi=400, bbox_inches='tight')
-# fig.savefig('CaptureTest2.png', dpi=400, bbox_inches='tight')
+# fig.savefig('MigrationTest.png', dpi=400, bbox_inches='tight')
+fig.savefig('CaptureTest2.png', dpi=400, bbox_inches='tight')
+

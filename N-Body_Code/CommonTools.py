@@ -10,11 +10,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
 import time
+import scipy.interpolate as interp
 
 G_pc = 4.3e-3   # pc.(km/s)^2/M_odot
 c = 3e8     # m/s
 M_odot = 1.98e30 # kg
 pc_to_m = 3.086e16  # m
+
+sigma_data_r = [0.5, 1, 1.5, 1.7, 2, 2.6, 3, 3.5, 4, 5.5, 7]
+sigma_data = [3.8, 4.2, 4.8, 5.1, 4.9, 5.9, 5.9, 5, 4, 2, 0]
+log_sigma_spline = interp.CubicSpline(sigma_data_r, sigma_data, extrapolate=True)
+
+temp_data_r = [1, 1.7, 2, 2.5, 3, 4, 5, 6, 7]
+temp_data = [5.75, 5.4, 5.2, 5, 4.75, 4, 3.2, 2.5, 1.8]
+log_temp_spline = interp.CubicSpline(temp_data_r, temp_data, extrapolate=True)
+
+aratio_data_r = [1, 1.4, 1.7, 1.9, 2, 2.2, 2.6, 3, 3.1, 3.25, 3.5, 4, 5, 6, 7]
+aratio_data = [-0.92, -1.3, -1.45, -1.4, -1.4, -1.7, -2, -2.15, -2.1, -2, -1.8, -1.6, -1.05, -0.6, -0.1]
+log_aratio_spline = interp.CubicSpline(aratio_data_r, aratio_data, extrapolate=True)
+
+opacity_data_r = [0.5, 1, 1.5, 1.7, 2, 2.5, 3, 3.5, 4, 4.1, 4.2, 4.5, 5, 5.5, 6, 7]
+opacity_data = [-0.4, -0.4, -0.4, -0.4, 0, -0.15, 0, -0.3, -0.4, -0.38, -0.4, -2, -3.1, -3.12, -3.15, -3.15]
+log_opacity_spline = interp.CubicSpline(opacity_data_r, opacity_data, extrapolate=True)
 
 class AGNDisk(object):
     def __init__(self, smbhmass, lenscale):
@@ -29,10 +46,13 @@ class AGNDisk(object):
         self.mass = smbhmass    # sol masses
         # self.mass_ratio = smbhmass / 1e8
         self.r_g = G_pc * self.mass / 9e10 # GM/c^2 in units of pc
+        self.r_s = self.r_g * 2
+        
         
         self.lenscale = lenscale    # pc
         self.lenscale_m = lenscale * pc_to_m   # m
-        self.lenscale_rs = self.lenscale / (2 * self.r_g)
+        self.lenscale_rs = self.lenscale / self.r_s
+        self.nondim_rs = self.r_s / self.lenscale
         self.timescale = np.sqrt(self.lenscale_m**3 / (G_pc * self.mass * pc_to_m * 1000**2))   # s
         self.velscale = np.sqrt(G_pc * self.mass / self.lenscale) * 1000  # m/s
         self.massscale = self.mass * M_odot    # kg
@@ -51,7 +71,7 @@ class AGNDisk(object):
         x, y, z = position
         radius = np.linalg.norm(position)
         radial_vec = np.array([x, y, z]) / radius
-        theta_vec = np.array([y, -x, 0]) / radius
+        theta_vec = np.array([-y, x, 0]) / radius
         nondim_mig = self.mig_force(mass, radius) * theta_vec
         nondim_damp = self.damp_force(mass, position, vel) * radial_vec
         # print(nondim_mig, nondim_damp)
@@ -71,8 +91,9 @@ class AGNDisk(object):
         q = mass    # mass ratio of the migrator to the SMBH - assume SMBH has a mass of 1
         gamma = 5/3     # adiabatic index
         c_v = 14304 * self.massscale    # specific heat capacity of hydrogen H2 gas, units are J/K
-        
-        logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
+
+        # logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
+        logr = np.log10(radius / self.nondim_rs)
         Sigma = self.disk_surfdens(logr)        # surface density
         rotvel = self.disk_rotvel(logr)
         asp_ratio = self.disk_aspectratio(logr)
@@ -82,15 +103,17 @@ class AGNDisk(object):
         # print(tau, tau_eff)
         
         # alpha = - d(ln Sigma)/d(ln r)
-        if logr <= 3:
-            alpha = - np.log(10)
-        else:
-            alpha = np.log(10) * 5/3 
+        # if logr <= 3:
+        #     alpha = - 1 * np.log(10)
+        # else:
+        #     alpha = 5/3 * np.log(10)
         # beta = - d(ln T)/d(ln r)
-        if logr <= 2.8:
-            beta = np.log(10) / 2.3 
-        else:
-            beta = np.log(10) * 5/6
+        # if logr <= 2.8:
+        #     beta = 1 / 2.3 * np.log(10)
+        # else:
+        #     beta = 5/6 * np.log(10)
+        alpha = log_sigma_spline.derivative()(logr) * np.log(10)
+        beta = log_temp_spline.derivative()(logr) * np.log(10)
         xi = beta - (gamma - 1) * alpha
         
         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
@@ -101,6 +124,7 @@ class AGNDisk(object):
         Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
         
         Gamma = Gamma_0 * (Gamma_ad * Theta**2 + Gamma_iso) / (Theta + 1)**2
+        
         # print(Gamma_0, Gamma_ad, Gamma_iso, Gamma)
         return Gamma / (radius * mass)      # need to divide by mass to get acceleration
     
@@ -113,7 +137,8 @@ class AGNDisk(object):
         vel : 1x3 np.array
         '''
         radius = np.linalg.norm(position)
-        logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
+        # logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
+        logr = np.log10(radius / self.nondim_rs)
         a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
         # velocity = self.disk_angularvel(position, vel)
@@ -136,10 +161,12 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        if logr <= 2.8:
-            return 10**(-1/2.3 * logr + 6.217)
-        else:
-            return 10**(-5/6 * logr + 22/3)
+        # if logr <= 2.8:
+        #     return 10**(-1/2.3 * logr + 6.217)
+        # else:
+        #     return 10**(-5/6 * logr + 22/3)
+        log_temp = log_temp_spline(logr) 
+        return 10**log_temp
         
     def disk_surfdens(self, logr):
         '''AGN Disk surface density, commonly with symbol Sigma. +1 in the power to go from g/cm^2 to kg/m^2
@@ -149,11 +176,14 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        if logr <= 3:
-            val = 10**(logr + 3 + 1)
-        else:
-            val = 10**(-5/3 * logr + 11 + 1)
-        return val * self.lenscale_m**2 / self.massscale
+        # if logr <= 3:
+        #     val = 10**(logr + 3 + 1)
+        # else:
+        #     val = 10**(-5/3 * logr + 11 + 1)
+        # return val * self.lenscale_m**2 / self.massscale
+        log_sigma_cgs = log_sigma_spline(logr) 
+        sigma = 10**(log_sigma_cgs + 1)
+        return sigma * self.lenscale_m**2 / self.massscale
     
     def disk_rotvel(self, logr):
         '''Returns units of m/s, then non-dimensionalised
@@ -169,10 +199,10 @@ class AGNDisk(object):
         # print('rotvel=', v)
         return v * self.lenscale / self.velscale
     
-    # def disk_angularvel(self, position, velocity):
-    #     ''' Angular velocity given position and velocity: omega = (||r x v|| / ||r||^2)
-    #     '''
-    #     return np.linalg.norm(np.cross(position, velocity)) / np.linalg.norm(position)**2
+    def disk_angularvel(self, position, velocity):
+        ''' Angular velocity given position and velocity: omega = (||r x v|| / ||r||^2)
+        '''
+        return np.linalg.norm(np.cross(position, velocity)) / np.linalg.norm(position)**2
     
     def disk_aspectratio(self, logr):
         '''Aspect ratio of scale height: h = H / r. Unitless.
@@ -181,11 +211,13 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        if logr <= 3:
-            val = 10**(-2/3 * logr - 1/3)
-        else:
-            val = 10**(0.5 * logr - 3.5)
-        return val
+        # if logr <= 3:
+        #     val = 10**(-2/3 * logr - 1/3)
+        # else:
+        #     val = 10**(0.5 * logr - 3.8)
+        # return val
+        log_aratio = log_aratio_spline(logr) 
+        return 10**(log_aratio)
         
     def disk_opacity(self, logr):
         '''Commonly with symbol kappa. -1 in the power to convert from cm^2/g to m^2/kg. 
@@ -195,13 +227,16 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        if logr <= 4.3:
-            val = 10**(-0.5 - 1)
-        elif 4.3 < logr < 4.8:
-            val = 10**(-5.6 * logr + 23.58 - 1)
-        else:
-            val =  10**(-3.3 - 1)
-        return val * self.massscale / self.lenscale_m**2
+        # if logr <= 4.3:
+        #     val = 10**(-0.5 - 1)
+        # elif 4.3 < logr < 4.8:
+        #     val = 10**(-5.6 * logr + 23.58 - 1)
+        # else:
+        #     val =  10**(-3.3 - 1)
+        # return val * self.massscale / self.lenscale_m**2
+        log_opacity_cgs = log_opacity_spline(logr) 
+        kappa = 10**(log_opacity_cgs - 1)
+        return kappa * self.massscale / self.lenscale_m**2
         
     def disk_optdepth(self, logr):
         '''Unitless?
@@ -363,7 +398,7 @@ def AGNBHICs(masses, smbhmass, seed=4080):
     des_vel = np.sqrt(1 / R)
     angle = np.arctan2(y, x)
     xprop = np.sin(angle)
-    yprop = - np.cos(angle)
+    yprop = -np.cos(angle)
     zprop = np.zeros(N)
     mult = np.sqrt(des_vel**2 / (xprop**2 + yprop**2 + zprop**2))
     xprop *= mult; yprop *= mult
@@ -379,7 +414,7 @@ def AGNBHICs(masses, smbhmass, seed=4080):
     # insert the SMBH into the start of the array
     vel = np.insert(vel, 0, [0, 0, 0], axis=0)
     pos = np.insert(pos, 0, [0, 0, 0], axis=0)
-    softening = np.repeat(0.2, N + 1) if N > 4e3 else np.repeat(0.1, N + 1)
+    softening = np.repeat(0.1, N + 1) if N > 4e3 else np.repeat(0.05, N + 1)
     masses = masses / (sum(masses) + smbhmass)
     masses = np.insert(masses, 0, smbhmass / (sum(masses) + smbhmass))
     
