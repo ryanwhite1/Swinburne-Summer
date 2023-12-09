@@ -72,7 +72,7 @@ class AGNDisk(object):
         radius = np.linalg.norm(position)
         radial_vec = np.array([x, y, z]) / radius
         theta_vec = np.array([-y, x, 0]) / radius
-        nondim_mig = self.mig_force(mass, radius) * theta_vec
+        nondim_mig = self.mig_force(mass, radius) / mass * theta_vec
         nondim_damp = self.damp_force(mass, position, vel) * radial_vec
         # print(nondim_mig, nondim_damp)
         
@@ -124,7 +124,7 @@ class AGNDisk(object):
         Gamma = Gamma_0 * (Gamma_ad * Theta**2 + Gamma_iso) / (Theta + 1)**2
         
         # print(Gamma_0, Gamma_ad, Gamma_iso, Gamma)
-        return Gamma / (radius * mass)      # need to divide by mass to get acceleration
+        return Gamma / radius   # this is the *force*... divide by mass later!
     
     def damp_force(self, mass, position, vel):
         ''' Eccentricity damping force as in Cresswell and Nelson (2007)

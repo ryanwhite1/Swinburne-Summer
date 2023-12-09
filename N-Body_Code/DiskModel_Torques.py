@@ -65,9 +65,9 @@ fig.savefig('Disk Model.png', dpi=400, bbox_inches='tight')
 radii = np.logspace(1, 5, 1000) * agn.nondim_rs
 torques = np.zeros(len(radii))
 for i, radius in enumerate(radii):
-    torques[i] = agn.mig_force(0.00001, radius)
+    torques[i] = agn.mig_force(1e-7, radius)
 
-torques *= agn.massscale * agn.lenscale_m**2 / agn.timescale**2 / 1e49 / (1000 * 1e4)
+torques *= agn.massscale * agn.lenscale_m**2 * 1e7 / (agn.timescale**2 * 1e49)
 pos_vals = torques > 0 
 neg_vals = torques <= 0 
 fig, ax = plt.subplots()
