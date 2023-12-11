@@ -17,16 +17,16 @@ c = 3e8     # m/s
 M_odot = 1.98e30 # kg
 pc_to_m = 3.086e16  # m
 
-sigma_data_r = [0.5, 1, 1.5, 1.7, 2, 2.6, 3, 3.5, 4, 5.5, 7]
-sigma_data = [3.8, 4.2, 4.8, 5.1, 4.9, 5.9, 5.9, 5, 4, 2, 0]
+sigma_data_r = [0.5, 1, 1.3, 1.5, 1.7, 2, 2.6, 3, 3.5, 4, 5.5, 7]
+sigma_data = [3.6, 4.1, 4.5, 4.9, 5.1, 4.8, 5.9, 5.9, 5, 4, 2, 0]
 log_sigma_spline = interp.CubicSpline(sigma_data_r, sigma_data, extrapolate=True)
 
-temp_data_r = [1, 1.7, 2, 2.5, 3, 4, 5, 6, 7]
-temp_data = [5.75, 5.4, 5.2, 5, 4.75, 4, 3.2, 2.5, 1.8]
+temp_data_r = [0.5, 1, 1.7, 2, 2.5, 3, 4, 5, 6, 7]
+temp_data = [5.95, 5.75, 5.4, 5.1, 5, 4.75, 4, 3.2, 2.5, 1.8]
 log_temp_spline = interp.CubicSpline(temp_data_r, temp_data, extrapolate=True)
 
-aratio_data_r = [1, 1.4, 1.7, 1.9, 2, 2.2, 2.6, 3, 3.1, 3.25, 3.5, 4, 5, 6, 7]
-aratio_data = [-0.92, -1.3, -1.45, -1.4, -1.4, -1.7, -2, -2.15, -2.1, -2, -1.8, -1.6, -1.05, -0.6, -0.1]
+aratio_data_r = [0.5, 0.7, 1, 1.4, 1.7, 1.9, 2, 2.2, 2.6, 3, 3.1, 3.25, 3.5, 4, 5, 6, 7]
+aratio_data = [-0.7, -0.8, -0.92, -1.3, -1.45, -1.4, -1.4, -1.7, -2.1, -2.15, -2.1, -2, -1.8, -1.6, -1.05, -0.6, -0.1]
 log_aratio_spline = interp.CubicSpline(aratio_data_r, aratio_data, extrapolate=True)
 
 opacity_data_r = [0.5, 1, 1.5, 1.7, 2, 2.5, 3, 3.5, 4, 4.1, 4.2, 4.5, 5, 5.5, 6, 7]
@@ -70,10 +70,16 @@ class AGNDisk(object):
         '''
         x, y, z = position
         radius = np.linalg.norm(position)
-        radial_vec = np.array([x, y, z]) / radius
+        # radial_vec2 = np.array([x, y, z]) / radius
         theta_vec = np.array([-y, x, 0]) / radius
+        # theta = np.arctan2(y, x)
+        # phi = np.sign(y) * np.arccos(x / np.sqrt(x**2 + y**2))
+        # radial_vec = np.array([np.sin(phi) * np.cos(theta), np.sin(phi) * np.sin(theta), np.cos(phi)])
+        # print(radial_vec)
+        # print(radial_vec - radial_vec2)
+        # theta_vec = np.array([-np.sin(theta), np.cos(theta), 0])
         nondim_mig = self.mig_force(mass, radius) / mass * theta_vec
-        nondim_damp = self.damp_force(mass, position, vel) * radial_vec
+        nondim_damp = self.damp_force(mass, position, vel)
         # print(nondim_mig, nondim_damp)
         
         return nondim_mig + nondim_damp
@@ -115,9 +121,8 @@ class AGNDisk(object):
         beta = log_temp_spline.derivative()(logr) * np.log(10)
         xi = beta - (gamma - 1) * alpha
         
-        Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
+        Theta = (c_v * Sigma * rotvel * tau_eff) / (4 * np.pi * stefboltz * self.disk_temp(logr)**3)
         Gamma_0 = (q * radius / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
-        # print(Gamma_0, (q / asp_ratio), Sigma, radius**4, rotvel**2)
         Gamma_iso =  -0.85 - alpha - 0.9 * beta
         Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
         
@@ -139,8 +144,8 @@ class AGNDisk(object):
         logr = np.log10(radius / self.nondim_rs)
         a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
-        velocity = self.disk_angularvel(position, vel)
-        # velocity = self.disk_rotvel(logr)
+        # velocity = self.disk_angularvel(position, vel)
+        velocity = self.disk_rotvel(logr)
         smbhmass = 1
         tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
         e = eccentricity(position, vel)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
@@ -414,7 +419,7 @@ def AGNBHICs(masses, smbhmass, seed=4080):
     # insert the SMBH into the start of the array
     vel = np.insert(vel, 0, [0, 0, 0], axis=0)
     pos = np.insert(pos, 0, [0, 0, 0], axis=0)
-    softening = np.repeat(0.1, N + 1) if N > 4e3 else np.repeat(0.05, N + 1)
+    softening = np.repeat(0.1, N + 1) if N > 4e3 else np.repeat(0.0005, N + 1)
     masses = masses / (sum(masses) + smbhmass)
     masses = np.insert(masses, 0, smbhmass / (sum(masses) + smbhmass))
     

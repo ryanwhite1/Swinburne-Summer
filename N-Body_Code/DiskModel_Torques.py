@@ -26,7 +26,7 @@ agn = AGNDisk(SMBHMass, lenscale)
 
 ## --- Disk Model --- ###
 n = 2000
-radius = np.logspace(1, 7, n) * agn.nondim_rs
+radius = np.logspace(0.5, 7, n) * agn.nondim_rs
 logradius = np.log10(radius / agn.nondim_rs)
 
 fig, axes = plt.subplots(nrows=5, sharex=True, figsize=(7, 10))
@@ -62,7 +62,7 @@ fig.savefig('Disk Model.png', dpi=400, bbox_inches='tight')
 
 
 
-radii = np.logspace(1, 5, 1000) * agn.nondim_rs
+radii = np.logspace(0.6, 5, 1000) * agn.nondim_rs
 torques = np.zeros(len(radii))
 for i, radius in enumerate(radii):
     torques[i] = agn.mig_force(1e-7, radius)
