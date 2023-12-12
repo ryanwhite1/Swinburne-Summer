@@ -71,7 +71,7 @@ class AGNDisk(object):
         x, y, z = position
         radius = np.linalg.norm(position)
         # radial_vec2 = np.array([x, y, z]) / radius
-        theta_vec = np.array([-y, x, 0]) / radius
+        theta_vec = - np.array([-y, x, 0]) / radius
         # theta = np.arctan2(y, x) + np.pi
         # phi = np.sign(y) * np.arccos(x / np.sqrt(x**2 + y**2))
         # radial_vec = np.array([np.sin(phi) * np.cos(theta), np.sin(phi) * np.sin(theta), np.cos(phi)])

@@ -14,7 +14,7 @@ import time
 from CommonTools import *
 
 
-Tmax = 10000
+Tmax = 20000
 dt = 0.05
 nt = int((Tmax - 0) / dt) + 1
 NsBH = 10
