@@ -72,7 +72,7 @@ class AGNDisk(object):
         radius = np.linalg.norm(position)
         # radial_vec2 = np.array([x, y, z]) / radius
         theta_vec = np.array([-y, x, 0]) / radius
-        # theta = np.arctan2(y, x)
+        # theta = np.arctan2(y, x) + np.pi
         # phi = np.sign(y) * np.arccos(x / np.sqrt(x**2 + y**2))
         # radial_vec = np.array([np.sin(phi) * np.cos(theta), np.sin(phi) * np.sin(theta), np.cos(phi)])
         # print(radial_vec)
@@ -117,8 +117,8 @@ class AGNDisk(object):
         #     beta = 1 / 2.3 * np.log(10)
         # else:
         #     beta = 5/6 * np.log(10)
-        alpha = log_sigma_spline.derivative()(logr)
-        beta = log_temp_spline.derivative()(logr)
+        alpha = -log_sigma_spline.derivative()(logr)
+        beta = -log_temp_spline.derivative()(logr)
         xi = beta - (gamma - 1) * alpha
         
         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)

@@ -72,8 +72,8 @@ pos_vals = torques > 0
 neg_vals = torques <= 0 
 fig, ax = plt.subplots()
 
-ax.scatter(radii[pos_vals] / agn.nondim_rs, torques[pos_vals], s=5, label='negative')
-ax.scatter(radii[neg_vals] / agn.nondim_rs, -torques[neg_vals], c='r', s=5, label='positive')
+ax.scatter(radii[neg_vals] / agn.nondim_rs, -torques[neg_vals], s=5, label='negative')
+ax.scatter(radii[pos_vals] / agn.nondim_rs, torques[pos_vals], c='r', s=5, label='positive')
 ax.set(xscale='log', yscale='log', xlabel="Log(R/R$_s$)", ylabel='abs($\Gamma$) / 1e49')
 ax.legend()
 fig.savefig('Torque Model.png', dpi=400, bbox_inches='tight')
