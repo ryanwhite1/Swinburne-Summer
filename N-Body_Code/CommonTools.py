@@ -117,11 +117,11 @@ class AGNDisk(object):
         #     beta = 1 / 2.3 * np.log(10)
         # else:
         #     beta = 5/6 * np.log(10)
-        alpha = log_sigma_spline.derivative()(logr) * np.log(10)
-        beta = log_temp_spline.derivative()(logr) * np.log(10)
+        alpha = log_sigma_spline.derivative()(logr)
+        beta = log_temp_spline.derivative()(logr)
         xi = beta - (gamma - 1) * alpha
         
-        Theta = (c_v * Sigma * rotvel * tau_eff) / (4 * np.pi * stefboltz * self.disk_temp(logr)**3)
+        Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
         Gamma_0 = (q * radius / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
         Gamma_iso =  -0.85 - alpha - 0.9 * beta
         Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
