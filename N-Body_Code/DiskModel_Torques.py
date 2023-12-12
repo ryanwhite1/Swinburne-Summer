@@ -67,7 +67,7 @@ torques = np.zeros(len(radii))
 for i, radius in enumerate(radii):
     torques[i] = agn.mig_force(1e-7, radius)
 
-torques *= agn.massscale * agn.lenscale_m**2 * 1e7 / (agn.timescale**2 * 1e49)
+torques *= radii * agn.massscale * agn.lenscale_m**2 * 1e7 / (agn.timescale**2 * 1e49)
 pos_vals = torques > 0 
 neg_vals = torques <= 0 
 fig, ax = plt.subplots()

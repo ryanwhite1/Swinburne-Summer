@@ -122,7 +122,7 @@ class AGNDisk(object):
         xi = beta - (gamma - 1) * alpha
         
         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
-        Gamma_0 = (q * radius / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
+        Gamma_0 = (q / asp_ratio)**2 * Sigma * radius**4 * rotvel**2
         Gamma_iso =  -0.85 - alpha - 0.9 * beta
         Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma
         
