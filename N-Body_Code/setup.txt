@@ -1,0 +1,16 @@
+env creation:
+
+conda create -n nbody python
+conda activate nbody
+conda install numpy matplotlib scipy spyder
+pip install pytreegrav
+conda install -c numba numba
+pip install rebound
+pip install reboundx
+
+
+
+to use:
+1. go into anaconda prompt
+2. activate nbody env
+3. run: `spyder --new-instance`
