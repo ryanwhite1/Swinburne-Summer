@@ -100,25 +100,15 @@ class AGNDisk(object):
         # logr = np.log10(radius * self.lenscale_rs)  # find log(radius) where radius is in units of SMBH Schwarzschild radii
         logr = np.log10(radius / self.nondim_rs)
         Sigma = self.disk_surfdens(logr)        # surface density
-        rotvel = self.disk_rotvel(logr)
+        rotvel = self.disk_angvel(logr)
         asp_ratio = self.disk_aspectratio(logr)
         tau = self.disk_opacity(logr) * Sigma / 2  # tau = kappa * Sigma / 2
         # tau = self.disk_optdepth(logr)
         tau_eff = 3 * tau / 8 + np.sqrt(3) / 4 + 1 / (4 * tau)      # effective optical depth
         # print(tau, tau_eff)
         
-        # alpha = - d(ln Sigma)/d(ln r)
-        # if logr <= 3:
-        #     alpha = - 1 * np.log(10)
-        # else:
-        #     alpha = 5/3 * np.log(10)
-        # beta = - d(ln T)/d(ln r)
-        # if logr <= 2.8:
-        #     beta = 1 / 2.3 * np.log(10)
-        # else:
-        #     beta = 5/6 * np.log(10)
-        alpha = -log_sigma_spline.derivative()(logr)
-        beta = -log_temp_spline.derivative()(logr)
+        alpha = -log_sigma_spline.derivative()(logr)    # alpha = - d(ln Sigma)/d(ln r)
+        beta = -log_temp_spline.derivative()(logr)      # beta = - d(ln T)/d(ln r)
         xi = beta - (gamma - 1) * alpha
         
         Theta = (c_v * Sigma * rotvel * tau_eff) / (12 * np.pi * stefboltz * self.disk_temp(logr)**3)
@@ -145,15 +135,21 @@ class AGNDisk(object):
         a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
         # velocity = self.disk_angularvel(position, vel)
-        velocity = self.disk_rotvel(logr)
+        velocity = self.disk_angvel(logr)
         smbhmass = 1
         tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
+        
         e = eccentricity(position, vel)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
         # print(e)
         eps = e / h
-        t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3)
-        # print(t_e)
+        # i = inclination(position, vel)
+        # l = i / h
+        l = 0
+        t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3 + 0.18 * eps * l**2)
+        # t_i = (tdamp / 0.544) * (1 - 0.3 * l**2 + 0.24 * l**3 + 0.14 * l * eps**2)
+        # print(t_e, time_convert(t_e, self.mass, self.lenscale) * 1e6)
         f_damp = -2 * np.dot(vel, position) * position / (radius**2 * t_e)
+        # f_damp += np.array([0, 0, -vel[2] / t_i])
         return f_damp
     
     
@@ -188,16 +184,13 @@ class AGNDisk(object):
         sigma = 10**(log_sigma_cgs + 1)
         return sigma * self.lenscale_m**2 / self.massscale
     
-    def disk_rotvel(self, logr):
+    def disk_angvel(self, logr):
         '''Returns units of m/s, then non-dimensionalised
         Parameters
         ----------
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        # v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)) * 1000
-        # # print('rotvel=', v)
-        # return v / self.velscale
         v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)**3) * 1000
         # print('rotvel=', v)
         return v * self.lenscale / self.velscale
@@ -214,11 +207,6 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        # if logr <= 3:
-        #     val = 10**(-2/3 * logr - 1/3)
-        # else:
-        #     val = 10**(0.5 * logr - 3.8)
-        # return val
         log_aratio = log_aratio_spline(logr) 
         return 10**(log_aratio)
         
@@ -230,13 +218,6 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        # if logr <= 4.3:
-        #     val = 10**(-0.5 - 1)
-        # elif 4.3 < logr < 4.8:
-        #     val = 10**(-5.6 * logr + 23.58 - 1)
-        # else:
-        #     val =  10**(-3.3 - 1)
-        # return val * self.massscale / self.lenscale_m**2
         log_opacity_cgs = log_opacity_spline(logr) 
         kappa = 10**(log_opacity_cgs - 1)
         return kappa * self.massscale / self.lenscale_m**2
@@ -251,15 +232,6 @@ class AGNDisk(object):
             return 10**(logr + 2)
         else:
             return 10**(-2.5 * logr + 12.5)
-        
-        
-    # def disk_toomre(self, radius):
-    #     ''''''
-    #     logr = np.log10(radius)
-    #     if logr >= -2:
-    #         return 1 
-    #     else:
-    #         return 10**(-5 * logr - 10)
     
     
 
@@ -305,28 +277,30 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
             dist = np.linalg.norm(pos[primary] - pos[secondary])    # calculate the distance between the two BHs at this timestep
             if dist < R_mH: # check if they within their mutual hill radius
                 ### Below commented out lines check for relative kinetic energy vs binding energy in capture
-                # reduced_mass = 1 / (1 / m1 + 1 / m2)
-                # rel_kin_energy = 0.5 * reduced_mass * np.linalg.norm(vel[primary] - vel[secondary])**2
-                # binding_energy = m1 * m2 / (2 * R_mH)
-                # print(rel_kin_energy, binding_energy)
-                # if rel_kin_energy < binding_energy:
-                #     print("capture!", R_mH, dist)
-                #     print(check_inds)
-                #     captured.append(primary)    # add the primary to the captured list
-                #     captured[:] = captured      # modify in place to update the list outside of this function
-                #     masses[secondary] += masses[primary]    # assume no mass loss in the merger
-                #     masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
-                #     break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
+                reduced_mass = 1 / (1 / m1 + 1 / m2)
+                rel_kin_energy = 0.5 * reduced_mass * np.linalg.norm(vel[primary] - vel[secondary])**2
+                binding_energy = m1 * m2 / (2 * R_mH)
+                print(rel_kin_energy, binding_energy)
+                if rel_kin_energy < binding_energy:
+                    print("capture!", R_mH, dist)
+                    print(check_inds)
+                    captured.append(primary)    # add the primary to the captured list
+                    captured[:] = captured      # modify in place to update the list outside of this function
+                    masses[secondary] = 0.95 * (m1 + m2)    # assume merged mass is 95% of the sum of the original masses
+                    pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
+                    vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
+                    masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
+                    break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
             
-                print("capture!", R_mH, dist)
-                print(check_inds)
-                captured.append(primary)    # add the primary to the captured list
-                captured[:] = captured      # modify in place to update the list outside of this function
-                masses[secondary] += masses[primary]; masses[secondary] *= 0.95   # assume merged mass is 95% of the sum of the original masses
-                pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
-                vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
-                masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
-                break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
+                # print("capture!", R_mH, dist)
+                # print(check_inds)
+                # captured.append(primary)    # add the primary to the captured list
+                # captured[:] = captured      # modify in place to update the list outside of this function
+                # masses[secondary] = 0.95 * (m1 + m2)   # assume merged mass is 95% of the sum of the original masses
+                # pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
+                # vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
+                # masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
+                # break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
             
     # now set the central SMBH/captured BHs to not have changed position or velocity
     for i in captured:
@@ -521,6 +495,12 @@ def eccentricity(position, velocity):
     radius = np.linalg.norm(position)
     e = np.linalg.norm(np.cross(velocity, np.cross(position, velocity)) - position / radius)
     return e
+
+def inclination(position, velocity):
+    '''https://en.wikipedia.org/wiki/Orbital_inclination
+    '''
+    ang_momentum = np.cross(position, velocity)
+    return np.arccos(ang_momentum[2] / np.linalg.norm(ang_momentum))
     
     
 
