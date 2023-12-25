@@ -121,6 +121,22 @@ class AGNDisk(object):
         # print(Gamma_0, Gamma_ad, Gamma_iso, Gamma)
         return Gamma / radius   # this is the *force*... divide by mass later!
     
+    def thermal_torque(self, mass, radius):
+        stefboltz = 5.67 * 10**-8 * self.lenscale_m**2 * self.timescale     # units of J/K^4
+        q = mass    # mass ratio of the migrator to the SMBH - assume SMBH has a mass of 1
+        gamma = 5/3     # adiabatic index
+        logr = np.log10(radius / self.nondim_rs)
+        Sigma = self.disk_surfdens(logr)        # surface density
+        rotvel = self.disk_angvel(logr)
+        asp_ratio = self.disk_aspectratio(logr)
+        kappa = self.disk_opacity(logr)
+        tau = kappa * Sigma / 2  # tau = kappa * Sigma / 2
+        temp = self.disk_temp(logr)
+        dens = self.disk_dens(logr)
+        
+        chi = 16 * gamma * (gamma - 1) * stefboltz * temp**4 / (3 * kappa * (asp_ratio * radius * rotvel)**2)# thermal diffusivity
+        Lc = 4 * np.pi * dens * chi / gamma
+    
     def damp_force(self, mass, position, vel):
         ''' Eccentricity damping force as in Cresswell and Nelson (2007)
         Parameters
@@ -129,29 +145,61 @@ class AGNDisk(object):
         position : 1x3 np.array
         vel : 1x3 np.array
         '''
+        # radius = np.linalg.norm(position)
+        # # logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
+        # logr = np.log10(radius / self.nondim_rs)
+        # # a = semi_major_axis(position, vel)
+        # h = self.disk_aspectratio(logr)
+        # # velocity = self.disk_angularvel(position, vel)
+        # velocity = self.disk_angvel(logr)
+        # smbhmass = 1
+        # # tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
+        # tdamp = h**4 / (mass * self.disk_surfdens(logr) * radius**2 * velocity)
+        
+        # e = eccentricity(position, vel)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
+        # # print(e)
+        # eps = e / h
+        # # i = inclination(position, vel)
+        # # l = i / h
+        # l = 0
+        # t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3 + 0.18 * eps * l**2)
+        # # t_i = (tdamp / 0.544) * (1 - 0.3 * l**2 + 0.24 * l**3 + 0.14 * l * eps**2)
+        # # print(t_e, time_convert(t_e, self.mass, self.lenscale) * 1e6)
+        # f_damp = -2 * np.dot(vel, position) * position / (radius**2 * t_e)
+        # # f_damp += np.array([0, 0, -vel[2] / t_i])
+        # return f_damp
+        
+        
+        
+        
         radius = np.linalg.norm(position)
         # logr = np.log10(radius * self.lenscale_rs)  # log(radius) in schwarzschild radii    
         logr = np.log10(radius / self.nondim_rs)
-        a = semi_major_axis(position, vel)
+        # a = semi_major_axis(position, vel)
         h = self.disk_aspectratio(logr)
         # velocity = self.disk_angularvel(position, vel)
-        velocity = self.disk_angvel(logr)
+        # velocity = self.disk_angvel(logr)
         smbhmass = 1
-        tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
+        sigma = self.disk_surfdens(logr)
+        # tdamp = (smbhmass**2 * h**4) / (mass * self.disk_surfdens(logr) * a**2 * velocity)
+        # tdamp = h**4 / (mass * self.disk_surfdens(logr) * radius**2 * velocity)
         
         e = eccentricity(position, vel)        # https://astronomy.stackexchange.com/questions/29005/calculation-of-eccentricity-of-orbit-from-velocity-and-radius
         # print(e)
-        eps = e / h
+        # eps = e / h
         # i = inclination(position, vel)
         # l = i / h
-        l = 0
-        t_e = (tdamp / 0.78) * (1 - 0.14 * eps**2 + 0.06 * eps**3 + 0.18 * eps * l**2)
+        # l = 0
+        rte = h * (smbhmass * np.sqrt(radius * smbhmass)) * (h**3 - 0.14 * e**2 * h + 0.06 * e**3) / (0.78 * mass * sigma)
         # t_i = (tdamp / 0.544) * (1 - 0.3 * l**2 + 0.24 * l**3 + 0.14 * l * eps**2)
         # print(t_e, time_convert(t_e, self.mass, self.lenscale) * 1e6)
-        f_damp = -2 * np.dot(vel, position) * position / (radius**2 * t_e)
+        f_damp = -2 * np.dot(vel, position) * position / rte
         # f_damp += np.array([0, 0, -vel[2] / t_i])
         return f_damp
     
+    def disk_dens(self, logr):
+        ''''''
+        return self.disk_surfdens(logr) / (2 * self.disk_aspectratio(logr) * 10**(logr))
     
     def disk_temp(self, logr):
         ''' Returns AGN disk temperature with units of K
@@ -191,7 +239,7 @@ class AGNDisk(object):
         logr : float
             log10(radius) where the radius is in units of schwarzschild radii
         '''
-        v = np.sqrt(4.3 * 10**-3 * self.mass / (10**logr * 2 * self.r_g)**3) * 1000
+        v = np.sqrt(G_pc * self.mass / (10**logr * 2 * self.r_g)**3) * 1000
         # print('rotvel=', v)
         return v * self.lenscale / self.velscale
     
@@ -276,31 +324,31 @@ def leapfrog_kdk_timestep(dt, pos, masses, softening, vel, accel, agn, captured,
             # print(pos[primary] - pos[secondary])
             dist = np.linalg.norm(pos[primary] - pos[secondary])    # calculate the distance between the two BHs at this timestep
             if dist < R_mH: # check if they within their mutual hill radius
-                ### Below commented out lines check for relative kinetic energy vs binding energy in capture
-                reduced_mass = 1 / (1 / m1 + 1 / m2)
-                rel_kin_energy = 0.5 * reduced_mass * np.linalg.norm(vel[primary] - vel[secondary])**2
-                binding_energy = m1 * m2 / (2 * R_mH)
-                print(rel_kin_energy, binding_energy)
-                if rel_kin_energy < binding_energy:
-                    print("capture!", R_mH, dist)
-                    print(check_inds)
-                    captured.append(primary)    # add the primary to the captured list
-                    captured[:] = captured      # modify in place to update the list outside of this function
-                    masses[secondary] = 0.95 * (m1 + m2)    # assume merged mass is 95% of the sum of the original masses
-                    pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
-                    vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
-                    masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
-                    break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
+                # ### Below commented out lines check for relative kinetic energy vs binding energy in capture
+                # reduced_mass = 1 / (1 / m1 + 1 / m2)
+                # rel_kin_energy = 0.5 * reduced_mass * np.linalg.norm(vel[primary] - vel[secondary])**2
+                # binding_energy = m1 * m2 / (2 * R_mH)
+                # print(rel_kin_energy, binding_energy)
+                # if rel_kin_energy < binding_energy:
+                #     print("capture!", R_mH, dist)
+                #     print(check_inds)
+                #     captured.append(primary)    # add the primary to the captured list
+                #     captured[:] = captured      # modify in place to update the list outside of this function
+                #     masses[secondary] = 0.95 * (m1 + m2)    # assume merged mass is 95% of the sum of the original masses
+                #     pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
+                #     vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
+                #     masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
+                #     break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
             
-                # print("capture!", R_mH, dist)
-                # print(check_inds)
-                # captured.append(primary)    # add the primary to the captured list
-                # captured[:] = captured      # modify in place to update the list outside of this function
-                # masses[secondary] = 0.95 * (m1 + m2)   # assume merged mass is 95% of the sum of the original masses
-                # pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
-                # vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
-                # masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
-                # break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
+                print("capture!", R_mH, dist)
+                print(check_inds)
+                captured.append(primary)    # add the primary to the captured list
+                captured[:] = captured      # modify in place to update the list outside of this function
+                masses[secondary] = 0.95 * (m1 + m2)   # assume merged mass is 95% of the sum of the original masses
+                pos[secondary] = (m1 * pos[primary] + m2 * pos[secondary]) / (m1 + m2)  # set the position of the new BH to be the mass-weighted average
+                vel[secondary] = (m1 * vel[primary] + m2 * vel[secondary]) / (m1 + m2)  # set the velocity of the new BH to be the mass-weighted average
+                masses[primary] = 0 # set the mass of the 'other' BH to 0 so that it doesnt affect the rest of the sim
+                break       # we want to break because we dont want to merge the same BH more than once in 1 timestep
             
     # now set the central SMBH/captured BHs to not have changed position or velocity
     for i in captured:

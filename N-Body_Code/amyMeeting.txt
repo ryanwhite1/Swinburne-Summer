@@ -1,0 +1,6 @@
+ - eccentricity damping doesn't appear as effective as in Amy's paper
+	- would Amy be willing to take a look at the code?
+ - the migration does look about right, but need to clarify the theta vector direction
+	- the peak in the torques is ~2 orders of mag below the peak in Bellovary (2016) though!
+ - should ask what nbody code they used and if its open source/available
+ - open to collaboration if interested
