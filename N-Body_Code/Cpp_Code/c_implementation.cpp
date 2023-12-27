@@ -10,6 +10,11 @@ double norm(std::vector<double> vec1, std::vector<double> vec2){
     for (int i = 0; i < vec1.size(); i++){accum += vec1[i] * vec2[i];}
     return sqrt(accum);
 }
+double dist_norm(std::vector<double> vec1, std::vector<double> vec2){
+    double accum;
+    for (int i = 0; i < vec1.size(); i++){accum += pow(vec1[i] - vec2[i], 2);}
+    return sqrt(accum);
+}
 std::vector<double> cross_product(std::vector<double> vec1, std::vector<double> vec2){
     std::vector<double> result(vec1.size());
     result[0] = vec1[1] * vec2[2] - vec1[2] * vec2[1];
@@ -54,7 +59,7 @@ double inclination(std::vector<double> position, std::vector<double> velocity){
 
 
 
-double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16;
+const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16;
 
 std::vector<double> sigma_data_r = {0.5, 1, 1.3, 1.5, 1.7, 2, 2.6, 3, 3.5, 4, 5.5, 7};
 std::vector<double> sigma_data = {3.6, 4.1, 4.5, 4.9, 5.1, 4.8, 5.9, 5.9, 5, 4, 2, 0};
@@ -75,6 +80,7 @@ tk::spline log_opacity_spline(opacity_data_r, opacity_data);
 class AGNDisk{
     public:
         double mass, r_g, r_s, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, massscale;
+        const double stefboltz = 5.67e-8 * lenscale_m * lenscale_m * timescale;         // non-dimensionalised boltzmann constant
         AGNDisk(double, double);
         double disk_temp (double logr){
             return pow(10, log_temp_spline(logr));
@@ -102,7 +108,7 @@ class AGNDisk{
             // first calculate the radius of the particle
             double radius = norm(position, position);
             // now define constants and calculate disk properties at this radius
-            double stefboltz = 5.67e-8 * lenscale_m * lenscale_m * timescale;
+            
             double gamma = 5/3, c_v = 14304 * massscale, q = mass;
             double logr = log10(radius / nondim_rs), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
             double kappa = disk_opacity(logr), temp = disk_temp(logr);
@@ -136,6 +142,48 @@ AGNDisk::AGNDisk (double smbhmass, double lenscale){
     velscale = sqrt(G_pc * mass / lenscale) * 1000;
     massscale = mass * M_odot;
 }
+
+std::vector<std::vector<double>> nbody_accel(std::vector<double> masses, std::vector<std::vector<double>> pos){
+    int size = masses.size();
+    double dist, mag;
+    std::vector<std::vector<double>> accel(size, std::vector<double> (3, 0));
+    double softening = 0.01;
+    for (int i = 0; i < size; i++){
+        for (int j = 0; j < size; j++){
+            if (i == j){}
+            else {
+                dist = dist_norm(pos[i], pos[j]);
+                mag = - masses[i] * masses[j] / pow(dist*dist + softening*softening, 3/2);
+                for (int k = 0; k < 3; k++){
+                    accel[i][k] += mag * (pos[i][k] - pos[j][k]);
+                }
+            }
+        }
+    }
+    return accel;
+}
+
+void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel, std::vector<std::vector<double>> &accel,
+                        double dt, std::vector<double> masses, AGNDisk agn){
+    // leapfrog integration
+    int size = masses.size();
+    for (int i = 0; i < size; i++){
+        vel[i] = vec_add(vel[i], vec_scalar(accel[i], 0.5 * dt));
+        pos[i] = vec_add(pos[i], vec_scalar(vel[i], dt));
+    }
+    accel = nbody_accel(masses, pos);
+    for (int i = 0; i < size; i++){
+        accel[i] = vec_add(accel[i], agn.disk_forces(masses[i], pos[i], vel[i]));
+        vel[i] = vec_add(vel[i], vec_scalar(accel[i], 0.5 * dt));
+    }
+}
+
+void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel, std::vector<std::vector<double>> &accel,
+                        double dt, std::vector<double> masses, AGNDisk agn){
+    
+}
+
+
 
 
 int main(){
