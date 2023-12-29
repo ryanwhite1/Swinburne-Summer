@@ -7,7 +7,23 @@
 #include <cmath>
 #include <random>
 #include <ctime>
+#include <algorithm>
+#include <iterator>
 
+std::vector<int> set_diff(std::vector<int> vec1, std::vector<int> vec2){
+    std::vector<int> diff;
+    std::set_difference(vec1.begin(), vec1.end(), vec2.begin(), vec2.end(),
+                        std::inserter(diff, diff.begin()));
+    return diff;
+}
+std::vector<int> int_arange(int start, int stop, int step){
+    int nt = int((stop - start) / step);
+    std::vector<int> range(nt);
+    for (int i = 0; i < nt; i++){
+        range[i] = start + i * step;
+    }
+    return range;
+}
 double norm(std::vector<double> vec1, std::vector<double> vec2){
     double accum;
     for (int i = 0; i < vec1.size(); i++){accum += vec1[i] * vec2[i];}
@@ -15,7 +31,7 @@ double norm(std::vector<double> vec1, std::vector<double> vec2){
 }
 double dist_norm(std::vector<double> vec1, std::vector<double> vec2){
     double accum;
-    for (int i = 0; i < vec1.size(); i++){accum += pow(vec1[i] - vec2[i], 2);}
+    for (int i = 0; i < vec1.size(); i++){accum += (vec1[i] - vec2[i])*(vec1[i] - vec2[i]);}
     return sqrt(accum);
 }
 std::vector<double> cross_product(std::vector<double> vec1, std::vector<double> vec2){
@@ -237,7 +253,9 @@ std::vector<std::vector<double>> nbody_accel(std::vector<double> masses, std::ve
 }
 
 void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel, std::vector<std::vector<double>> &accel,
-                        double dt, std::vector<double> masses, AGNDisk agn){
+                        double dt, std::vector<double> masses, AGNDisk agn, std::vector<int> &captured){
+    
+    std::vector<int> check_inds = set_diff(int_arange(0, masses.size(), 1), captured);
     // leapfrog integration
     int size = masses.size();
     for (int i = 0; i < size; i++){
@@ -246,14 +264,43 @@ void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vect
     }
     accel = nbody_accel(masses, pos);
     for (int i = 0; i < size; i++){
-        accel[i] = vec_add(accel[i], agn.disk_forces(masses[i], pos[i], vel[i]));
-        vel[i] = vec_add(vel[i], vec_scalar(accel[i], 0.5 * dt));
+        if(std::find(check_inds.begin(), check_inds.end(), i) != check_inds.end()) {    // check if check_inds contains this index 'i'
+            accel[i] = vec_add(accel[i], agn.disk_forces(masses[i], pos[i], vel[i]));
+            vel[i] = vec_add(vel[i], vec_scalar(accel[i], 0.5 * dt));
+        } else { // if not, then we don't care to add forces to this captured BH
+            continue;
+        }
+    }
+    for (int i = 0; i < check_inds.size(); i++){
+        int primary = check_inds[i];
+        double m1 = masses[primary], r1 = norm(pos[primary], pos[primary]);
+        for (int j = i + 1; j < check_inds.size(); j++){
+            int secondary = check_inds[j];
+            double m2 = masses[secondary], r2 = norm(pos[secondary], pos[secondary]);
+            double R_mH = pow((m1 + m2) / (3 * masses[0]), 1./3) * (r1 + r2) / 2;
+            double dist = dist_norm(pos[primary], pos[secondary]);
+            if (dist < R_mH){
+                std::cout << "Capture! " << R_mH << " " << dist << std::endl;
+                for (int k = 0; k < check_inds.size(); k++){std::cout << check_inds[k] << std::endl;}
+                captured.push_back(primary);
+                std::sort(std::begin(captured), std::end(captured)); // apparently captured needs to be sorted for the check_inds line to work
+                masses[secondary] = 0.95 * (m1 + m2); masses[primary] = 0;
+                pos[secondary] = vec_scalar(vec_add(vec_scalar(pos[primary], m1), vec_scalar(pos[secondary], m2)), 1./(m1 + m2));
+                vel[secondary] = vec_scalar(vec_add(vec_scalar(vel[primary], m1), vec_scalar(vel[secondary], m2)), 1./(m1 + m2));
+                break;
+            }
+        }
+    }
+    for (int i = 0; i < captured.size(); i++){
+        int index = captured[i];
+        vel[index] = {0, 0, 0}; pos[index] = {0, 0, 0}; accel[i] = {0, 0, 0};
     }
 }
 
 void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel, std::vector<std::vector<double>> &accel,
                         double dt, double Tmax, std::vector<double> masses, AGNDisk agn){
     int nt = int(Tmax / dt) + 1, N = masses.size();
+    std::vector<int> captured;
     std::vector<std::vector<std::vector<double>>> positions(N, std::vector<std::vector<double>> (3, std::vector<double> (nt)));
     std::vector<std::vector<std::vector<double>>> velocities(N, std::vector<std::vector<double>> (3, std::vector<double> (nt)));
     std::vector<double> times(nt);
@@ -264,8 +311,14 @@ void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::ve
         }
     }
     times[0] = 0;
+    for (int n = 0; n < N; n++){
+        for (int j = 0; j < 3; j++){
+            positions[n][j][0] = pos[n][j];
+            velocities[n][j][0] = vel[n][j];
+        }
+    }
     for (int t = 1; t < nt; t++){
-        nbody_timestep(pos, vel, accel, dt, masses, agn);
+        nbody_timestep(pos, vel, accel, dt, masses, agn, captured);
         for (int n = 0; n < N; n++){
             for (int j = 0; j < 3; j++){
                 positions[n][j][t] = pos[n][j];
