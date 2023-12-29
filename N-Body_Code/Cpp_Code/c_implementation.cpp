@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include "spline.h"
@@ -76,6 +77,43 @@ double semi_major_axis(std::vector<double> position, std::vector<double> velocit
     double radius = norm(position, position), vel_mag = norm(velocity, velocity);
     return radius / (2 - radius * vel_mag*vel_mag);    // https://physics.stackexchange.com/questions/295431/how-can-i-calculate-the-semi-major-axis-from-velocity-position-and-pull
     // also found by rearranging the expression v^2 = GM(2/r - 1/a)
+}
+void save_1d_vec(std::vector<double> vector, std::string filename){
+    std::ofstream outputfile(filename);
+    outputfile << "[";
+    for (int i = 0; i < vector.size() - 1; i++){
+        outputfile << vector[i] << ", ";
+    }
+    outputfile << vector[vector.size() - 1] << "]";
+    outputfile.close();
+}
+void save_3d_vec(std::vector<std::vector<std::vector<double>>> vector, std::string filename){
+    std::ofstream outputfile(filename);
+    int lvl1 = vector.size(), lvl2 = vector[0].size(), lvl3 = vector[0][0].size();
+    outputfile << "[";
+    for (int i = 0; i < lvl1; i++){
+        outputfile << "[";
+        for (int j = 0; j < lvl2; j++){
+            outputfile << "[";
+            for (int k = 0; k < lvl3 - 1; k++){
+                outputfile << vector[i][j][k] << ", ";
+            }
+            outputfile << vector[i][j][lvl3 - 1];
+            if (j == lvl2 - 1){
+                outputfile << "]";
+            } else {
+                outputfile << "], ";
+            }
+        }
+        if (i == lvl1 - 1){
+            outputfile << "]";
+        } else {
+            outputfile << "], ";
+        }
+        
+    }
+    outputfile << "]";
+    outputfile.close();
 }
 
 
@@ -231,11 +269,14 @@ void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::ve
         for (int n = 0; n < N; n++){
             for (int j = 0; j < 3; j++){
                 positions[n][j][t] = pos[n][j];
-                positions[n][j][t] = vel[n][j];
+                velocities[n][j][t] = vel[n][j];
             }
         }
         times[t] = t * dt;
     }
+    save_1d_vec(times, "times.txt");
+    save_3d_vec(positions, "positions.txt");
+    save_3d_vec(velocities, "velocities.txt");
 }
 
 void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel){
@@ -246,11 +287,11 @@ void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &p
     for (int i = 1; i < N; i++){
         theta = uniform(0., 2*M_PI);
         dist = uniform(0.5*0.5*0.5, 1.);
-        R = pow(dist, 1/3);
+        R = pow(dist, 1./3);
         pos[i][0] = R * cos(theta); // x
         pos[i][1] = R * sin(theta); // y
         pos[i][2] = 0; // z
-        des_vel = pow(1 / R, 0.5);
+        des_vel = sqrt(1./R);
         angle = atan2(pos[i][1], pos[i][0]); // arctan2(y, x)
         xprop = sin(angle);
         yprop = -cos(angle);
@@ -283,7 +324,7 @@ int main(){
     std::vector<std::vector<double>> pos(NBH + 1, std::vector<double> (3)), vel(NBH + 1, std::vector<double> (3));
     init_conds(BHMasses, pos, vel);
     std::vector<std::vector<double>> accel = nbody_accel(BHMasses, pos);
-    nbody_integrator(pos, vel, accel, dt, 1000, BHMasses, agn);
+    nbody_integrator(pos, vel, accel, dt, 100, BHMasses, agn);
     std::cout << time(NULL) - t1 << std::endl;
     return 0;
 }
