@@ -197,7 +197,7 @@ class AGNDisk{
 
             double Gamma_iso = -0.85 - alpha - 0.9 * beta;
             double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma;
-            double Gamma = Gamma_0 * (Gamma_ad * pow(Theta, 2) + Gamma_iso) / pow(Theta + 1, 2);
+            double Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
             double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
             std::vector<double> theta_vec = {- position[1], position[0], 0}; theta_vec = vec_scalar(theta_vec, 1 / radius);
             std::vector<double> migration = vec_scalar(theta_vec, Gamma_mag);
@@ -233,16 +233,16 @@ AGNDisk::AGNDisk (double smbhmass, double lengthscale){
 }
 
 std::vector<std::vector<double>> nbody_accel(std::vector<double> masses, std::vector<std::vector<double>> pos){
-    int size = masses.size();
+    int N = masses.size();
     double dist, mag;
-    std::vector<std::vector<double>> accel(size, std::vector<double> (3, 0));
+    std::vector<std::vector<double>> accel(N, std::vector<double> (3, 0));
     double softening = 0.01;
-    for (int i = 0; i < size; i++){
-        for (int j = 0; j < size; j++){
-            if (i == j){}
+    for (int i = 0; i < N; i++){
+        for (int j = 0; j < N; j++){
+            if (i == j){continue;}
             else {
                 dist = dist_norm(pos[i], pos[j]);
-                mag = - masses[i] * masses[j] / pow(dist*dist + softening*softening, 3/2);
+                mag = -masses[j] / pow(dist*dist + softening*softening, 3./2);
                 for (int k = 0; k < 3; k++){
                     accel[i][k] += mag * (pos[i][k] - pos[j][k]);
                 }
@@ -300,7 +300,7 @@ void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vect
 void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel, std::vector<std::vector<double>> &accel,
                         double dt, double Tmax, std::vector<double> masses, AGNDisk agn){
     int nt = int(Tmax / dt) + 1, N = masses.size();
-    std::vector<int> captured;
+    std::vector<int> captured(1, 0);
     std::vector<std::vector<std::vector<double>>> positions(N, std::vector<std::vector<double>> (3, std::vector<double> (nt)));
     std::vector<std::vector<std::vector<double>>> velocities(N, std::vector<std::vector<double>> (3, std::vector<double> (nt)));
     std::vector<double> times(nt);
@@ -349,7 +349,7 @@ void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &p
         xprop = sin(angle);
         yprop = -cos(angle);
         zprop = 0;
-        mult = pow(des_vel*des_vel / (xprop*xprop + yprop*yprop + zprop*zprop), 0.5);
+        mult = sqrt(des_vel*des_vel / (xprop*xprop + yprop*yprop + zprop*zprop));
         xprop *= mult; yprop *= mult;
         vel[i][0] = xprop; vel[i][1] = yprop; vel[i][2] = zprop;
     }
@@ -366,7 +366,7 @@ void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &p
 
 int main(){
     time_t t1 = time(NULL);
-    double Tmax = 20000, dt = 0.01;
+    double Tmax = 1000, dt = 0.01;
     int NBH = 10;
     double SMBHMass = 1e8, r_s = 2 * G_pc * SMBHMass / 9e10;  // 2GM / c^2     units of pc
     double Nr_s = 1e3;      // number of schwarzschild radii to initialise the sim with respect to
@@ -377,7 +377,7 @@ int main(){
     std::vector<std::vector<double>> pos(NBH + 1, std::vector<double> (3)), vel(NBH + 1, std::vector<double> (3));
     init_conds(BHMasses, pos, vel);
     std::vector<std::vector<double>> accel = nbody_accel(BHMasses, pos);
-    nbody_integrator(pos, vel, accel, dt, 100, BHMasses, agn);
+    nbody_integrator(pos, vel, accel, dt, Tmax, BHMasses, agn);
     std::cout << time(NULL) - t1 << std::endl;
     return 0;
 }

@@ -45,12 +45,12 @@ times = import_cpp_data("times.txt")
 positions = import_cpp_data("positions.txt")
 velocities = import_cpp_data("velocities.txt")
 nt = len(times)
-step = times[1] - times[0]
+dt = times[1] - times[0]
 
 real_times = time_convert(times, SMBHMass + sum(NsBHMasses), lenscale)
 
 fig, axes = plt.subplots(figsize=(10, 10), nrows=2, sharex=True, gridspec_kw={'hspace':0})
-step = 5
+step = int(nt / 2000) # want 2000 points on our plot
 for i in range(1, 11):
     radii = np.array([np.linalg.norm(positions[i, :, j]) for j in range(0, nt, step)])
     vel_mags = np.array([np.linalg.norm(velocities[i, :, j]) for j in range(0, nt, step)])
