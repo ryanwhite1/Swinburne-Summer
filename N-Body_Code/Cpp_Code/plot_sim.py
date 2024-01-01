@@ -25,10 +25,19 @@ def time_convert(time, M, R):
     Myr_sec = 31536000000000.0
     return time * np.sqrt(radius**3 / (mass * G)) / Myr_sec
 
-def import_cpp_data(filename):
-    with open(filename, 'r') as file:
-        data = np.array(eval(file.read()))
+# def import_cpp_data(filename):
+#     with open(filename, 'r') as file:
+#         data = np.array(eval(file.read()))
+#     return data
+
+def import_cpp_data(filename, nt):
+    rawdata = np.loadtxt(filename, delimiter=',')
+    data = np.zeros((10, 3, nt))
+    for i in range(10):
+        data[i, :, :] = rawdata[i * nt: (i + 1) * nt, 1:].T
     return data
+
+
     
 
 Tmax = 20000
@@ -41,17 +50,21 @@ r_s = 2 * 4.3e-3 * SMBHMass / 9e10  # 2GM / c^2     units of pc
 Nr_s = 1e3      # number of schwarzschild radii to initialise the sim with respect to
 lenscale = Nr_s * r_s
 
-times = import_cpp_data("times.txt")
-positions = import_cpp_data("positions.txt")
-velocities = import_cpp_data("velocities.txt")
+times = np.loadtxt("times.csv", delimiter=',')
+# # positions = import_cpp_data("positions.txt")
+# # velocities = import_cpp_data("velocities.txt")
 nt = len(times)
 dt = times[1] - times[0]
+positions = import_cpp_data("positions.csv", nt)
+velocities = import_cpp_data("velocities.csv", nt)
+
+
 
 real_times = time_convert(times, SMBHMass + sum(NsBHMasses), lenscale)
 
 fig, axes = plt.subplots(figsize=(10, 10), nrows=2, sharex=True, gridspec_kw={'hspace':0})
 step = int(nt / 2000) # want 2000 points on our plot
-for i in range(1, 11):
+for i in range(10):
     radii = np.array([np.linalg.norm(positions[i, :, j]) for j in range(0, nt, step)])
     vel_mags = np.array([np.linalg.norm(velocities[i, :, j]) for j in range(0, nt, step)])
     semi_majors = - radii / (radii * vel_mags**2 - 2)

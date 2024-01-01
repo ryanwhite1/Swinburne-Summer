@@ -131,6 +131,23 @@ void save_3d_vec(std::vector<std::vector<std::vector<double>>> vector, std::stri
     outputfile << "]";
     outputfile.close();
 }
+void save_times(std::vector<double> vector, std::string filename){
+    std::ofstream outputfile(filename);
+    for (int i = 0; i < vector.size(); i++){
+        outputfile << vector[i] << std::endl;
+    }
+    outputfile.close();
+}
+void save_particle_data(std::vector<std::vector<std::vector<double>>> vector, std::string filename){
+    std::ofstream outputfile(filename);
+    int particles = vector.size(), axes = vector[0].size(), time = vector[0][0].size();
+    for (int i = 1; i < particles; i++){ // start at 1 because we don't want to save the SMBH data
+        for (int j = 0; j < time; j++){
+            outputfile << i << "," << vector[i][0][j] << "," << vector[i][1][j] << "," << vector[i][2][j] << std::endl;
+        }
+    }
+    outputfile.close();
+}
 
 
 
@@ -327,9 +344,12 @@ void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::ve
         }
         times[t] = t * dt;
     }
-    save_1d_vec(times, "times.txt");
-    save_3d_vec(positions, "positions.txt");
-    save_3d_vec(velocities, "velocities.txt");
+    // save_1d_vec(times, "times.txt");
+    // save_3d_vec(positions, "positions.txt");
+    // save_3d_vec(velocities, "velocities.txt");
+    save_times(times, "times.csv");
+    save_particle_data(positions, "positions.csv");
+    save_particle_data(velocities, "velocities.csv");
 }
 
 void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &pos, std::vector<std::vector<double>> &vel){
@@ -366,7 +386,7 @@ void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &p
 
 int main(){
     time_t t1 = time(NULL);
-    double Tmax = 1000, dt = 0.01;
+    double Tmax = 2000, dt = 0.01;
     int NBH = 10;
     double SMBHMass = 1e8, r_s = 2 * G_pc * SMBHMass / 9e10;  // 2GM / c^2     units of pc
     double Nr_s = 1e3;      // number of schwarzschild radii to initialise the sim with respect to
