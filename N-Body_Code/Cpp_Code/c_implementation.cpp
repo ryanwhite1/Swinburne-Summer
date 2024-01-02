@@ -288,7 +288,7 @@ void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vect
             continue;
         }
     }
-    for (int i = 0; i < check_inds.size(); i++){
+    for (int i = 0; i < check_inds.size() - 1; i++){
         int primary = check_inds[i];
         double m1 = masses[primary], r1 = norm(pos[primary], pos[primary]);
         for (int j = i + 1; j < check_inds.size(); j++){
@@ -298,9 +298,9 @@ void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vect
             double dist = dist_norm(pos[primary], pos[secondary]);
             if (dist < R_mH){
                 std::cout << "Capture! " << R_mH << " " << dist << std::endl;
-                for (int k = 0; k < check_inds.size(); k++){std::cout << check_inds[k] << std::endl;}
                 captured.push_back(primary);
                 std::sort(std::begin(captured), std::end(captured)); // apparently captured needs to be sorted for the check_inds line to work
+                for (int k = 0; k < captured.size(); k++){std::cout << captured[k] << std::endl;}
                 masses[secondary] = 0.95 * (m1 + m2); masses[primary] = 0;
                 pos[secondary] = vec_scalar(vec_add(vec_scalar(pos[primary], m1), vec_scalar(pos[secondary], m2)), 1./(m1 + m2));
                 vel[secondary] = vec_scalar(vec_add(vec_scalar(vel[primary], m1), vec_scalar(vel[secondary], m2)), 1./(m1 + m2));
@@ -310,7 +310,7 @@ void nbody_timestep(std::vector<std::vector<double>> &pos, std::vector<std::vect
     }
     for (int i = 0; i < captured.size(); i++){
         int index = captured[i];
-        vel[index] = {0, 0, 0}; pos[index] = {0, 0, 0}; accel[i] = {0, 0, 0};
+        vel[index] = {0, 0, 0}; pos[index] = {0, 0, 0}; accel[index] = {0, 0, 0};
     }
 }
 
@@ -321,12 +321,6 @@ void nbody_integrator(std::vector<std::vector<double>> &pos, std::vector<std::ve
     std::vector<std::vector<std::vector<double>>> positions(N, std::vector<std::vector<double>> (3, std::vector<double> (nt)));
     std::vector<std::vector<std::vector<double>>> velocities(N, std::vector<std::vector<double>> (3, std::vector<double> (nt)));
     std::vector<double> times(nt);
-    for (int n = 0; n < N; n++){
-        for (int j = 0; j < 3; j++){
-            positions[n][j][0] = pos[n][j];
-            positions[n][j][0] = vel[n][j];
-        }
-    }
     times[0] = 0;
     for (int n = 0; n < N; n++){
         for (int j = 0; j < 3; j++){
