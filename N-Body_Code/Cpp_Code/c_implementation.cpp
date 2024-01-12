@@ -206,7 +206,7 @@ class AGNDisk{
             double logr = log10(radius / nondim_rs), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
             double kappa = disk_opacity(logr), temp = disk_temp(logr);
 
-            double tau = kappa * Sigma / 2, tau_eff = 3 * tau / 8 + sqrt(3) / 4 + 1 / (4 * tau);    // define optical depth params
+            double tau = kappa * Sigma / 2, tau_eff = 3 * tau / 8 + sqrt(3) / 4 + 1. / (4 * tau);    // define optical depth params
             // start with the Type I migration as in Pardekooper (?)
             double alpha = -log_sigma_spline.deriv(1, logr), beta = -log_temp_spline.deriv(1, logr), xi = beta - (gamma - 1) * alpha; // define disk gradient properties
             double Theta = (c_v * Sigma * angvel * tau_eff) / (12 * M_PI * stefboltz * pow(temp, 3));
@@ -216,7 +216,7 @@ class AGNDisk{
             double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma) / gamma;
             double Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
             double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
-            std::vector<double> theta_vec = {- position[1], position[0], 0}; theta_vec = vec_scalar(theta_vec, 1 / radius);
+            std::vector<double> theta_vec = {position[1], -position[0], 0}; theta_vec = vec_scalar(theta_vec, 1. / radius);
             std::vector<double> migration = vec_scalar(theta_vec, Gamma_mag);
             accel = vec_add(accel, migration);      // add migration to the acceleration total
 
@@ -229,7 +229,7 @@ class AGNDisk{
             eps = e / asp_ratio;
             i = inclination(position, vel);
             l = i / asp_ratio;
-            t_i = (tdamp / 0.544) * (1 - 0.3 * l*l + 0.24 * l*l*l + 0.14 * l * eps*eps);
+            t_i = (tdamp / 0.544) * (1. - 0.3 * l*l + 0.24 * l*l*l + 0.14 * l * eps*eps);
             std::vector<double> e_damp = vec_scalar(position, -2 * dot_product(vel, position) / tdamp); // eccentricity damping
             std::vector<double> i_damp = {0, 0, -vel[2] / t_i};
             accel = vec_add(accel, vec_add(e_damp, i_damp));    // add the damping forces to the migration acceleration
@@ -380,7 +380,7 @@ void init_conds(std::vector<double> &masses, std::vector<std::vector<double>> &p
 
 int main(){
     time_t t1 = time(NULL);
-    double Tmax = 2000, dt = 0.01;
+    double Tmax = 10000, dt = 0.005;
     int NBH = 10;
     double SMBHMass = 1e8, r_s = 2 * G_pc * SMBHMass / 9e10;  // 2GM / c^2     units of pc
     double Nr_s = 1e3;      // number of schwarzschild radii to initialise the sim with respect to
