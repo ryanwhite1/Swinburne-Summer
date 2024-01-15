@@ -27,6 +27,8 @@ const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma
 int num_BH = 0;  
 int MIGRATION_PRESCRIPTION = 0;     // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
 int RAND_BH_MASSES = 0;             // 0 for 10 solar mass seed BHs, 1 for randomly sampled masses
+int MERGER_KICKS    = 1;            // 0 for no kicks in mergers, 1 for kicks in random direction
+double MUTUAL_HILL_PROP = 1.;       // proportion of mutual hill radius to consider a merger
 
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
 const int n_sigma = 12, n_temp = 10, n_aratio = 17, n_opacity = 16;
@@ -124,7 +126,7 @@ void check_mergers(struct reb_simulation* r){
             const double r2 = sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2);
             double R_mH = pow((m1 + m2) / (3 * com.m), 1./3.) * (r1 + r2) / 2.;   // mutual hill radius
             double dist = sqrt((dx1-dx2)*(dx1-dx2) + (dy1-dy2)*(dy1-dy2) + (dz1-dz2)*(dz1-dz2));
-            if (dist < (1. * R_mH)){
+            if (dist < (MUTUAL_HILL_PROP * R_mH)){
                 // now to check if their relative kinetic energy is low enough for capture
                 const double dvx1 = p1->vx-com.vx;
                 const double dvy1 = p1->vy-com.vy;
@@ -145,18 +147,19 @@ void check_mergers(struct reb_simulation* r){
                     p1->vz = (m1 * p1->vz + m2 * p2->vz) / (m1 + m2);
                     p1->m = 0.95 * (m1 + m2);
 
-                    // include a kick in a random direction
-                    double q = fmin(m1 / m2, m2 / m1), opq = 1. + q;
-                    double A = 1.2 * 1e7 / velscale, B = -0.93;
-                    double vel_kick = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * q / (opq*opq));
-                    double angle = reb_random_uniform(r, 0.0, 2.*M_PI);
-                    double xprop = sin(angle);
-                    double yprop = -cos(angle);
-                    double mult = sqrt(vel_kick*vel_kick / (xprop*xprop + yprop*yprop));
-                    xprop *= mult; yprop *= mult;
-                    p1->vx += xprop; 
-                    p1->vy += yprop; 
-                    printf("%e %e %e %e %e \n", A, q, vel_kick, xprop, p1->vx);
+                    if (MERGER_KICKS == 1){     // include a kick in a random direction
+                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q;
+                        double A = 1.2 * 1e7 / velscale, B = -0.93;
+                        double vel_kick = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * q / (opq*opq));
+                        double angle = reb_random_uniform(r, 0.0, 2.*M_PI);
+                        double xprop = sin(angle);
+                        double yprop = -cos(angle);
+                        double mult = sqrt(vel_kick*vel_kick / (xprop*xprop + yprop*yprop));
+                        xprop *= mult; yprop *= mult;
+                        p1->vx += xprop; 
+                        p1->vy += yprop; 
+                        printf("%e %e %e %e %e \n", A, q, vel_kick, xprop, p1->vx);
+                    }
 
                     reb_simulation_remove_particle(r, j, 1);
                     break_check = 1;
@@ -395,8 +398,9 @@ int main(int argc, char* argv[]){
     reb_simulation_start_server(r, 1234);
 
     // Setup constants
-    MIGRATION_PRESCRIPTION     = 1;     // set to jimenez and masset migration torques
-    RAND_BH_MASSES             = 1;     // randomly sample bh masses
+    MIGRATION_PRESCRIPTION      = 1;     // set to jimenez and masset migration torques
+    RAND_BH_MASSES              = 1;     // randomly sample bh masses
+    MUTUAL_HILL_PROP            = 1.;
 
     // r->integrator           = REB_INTEGRATOR_MERCURIUS;
     // r->dt                   = 1e-2; 
@@ -414,7 +418,7 @@ int main(int argc, char* argv[]){
     r->rand_seed            = 2399;
 
     // Initial conditions
-    initial_BH = 10;
+    int initial_BH = 10;
     init_conds(initial_BH, r);
 
     reb_simulation_move_to_com(r);          
