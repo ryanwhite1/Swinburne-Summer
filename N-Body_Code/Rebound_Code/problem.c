@@ -14,6 +14,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <math.h>
 #include <time.h>
 #include "rebound.h"
@@ -25,10 +26,11 @@ double tmax;
 double agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, stefboltz, c_v;
 const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.; 
 int num_BH = 0;  
-int MIGRATION_PRESCRIPTION = 0;     // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
-int RAND_BH_MASSES = 0;             // 0 for 10 solar mass seed BHs, 1 for randomly sampled masses
-int MERGER_KICKS    = 1;            // 0 for no kicks in mergers, 1 for kicks in random direction
-double MUTUAL_HILL_PROP = 1.;       // proportion of mutual hill radius to consider a merger
+int MIGRATION_PRESCRIPTION  = 0;            // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
+int RAND_BH_MASSES          = 0;            // 0 for 10 solar mass seed BHs, 1 for randomly sampled masses
+int MERGER_KICKS            = 1;            // 0 for no kicks in mergers, 1 for kicks in random direction
+int MERGER_CRITERION        = 1;            // 0 for binding_energy < KE, 1 for criterion in Li et al
+double MUTUAL_HILL_PROP     = 1.;           // proportion of mutual hill radius to consider a merger
 
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
 const int n_sigma = 12, n_temp = 10, n_aratio = 17, n_opacity = 16;
@@ -137,7 +139,21 @@ void check_mergers(struct reb_simulation* r){
                 double reduced_mass = 1. / (1. / m1 + 1. / m2);
                 double rel_kin_energy = 0.5 * reduced_mass * ((dvx1-dvx2)*(dvx1-dvx2) + (dvy1-dvy2)*(dvy1-dvy2) + (dvz1-dvz2)*(dvz1-dvz2));
                 double binding_energy = m1 * m2 / (2. * R_mH);
-                if (rel_kin_energy < binding_energy){
+                bool merger = false;
+                if (MERGER_CRITERION == 0){     // classic binding energy < relative kinetic energy
+                    merger = binding_energy < rel_kin_energy;
+                } else if (MERGER_CRITERION == 1){      // criterion based on the results of Li et al 2023
+                    double logr = log10(r1 / nondim_rs), Sigma = disk_surfdens(logr);
+                    double cond = (Sigma * r1*r2) / (m1 + m2);
+                    double abs_Ehill = (m1 + m2) / (2. * R_mH);
+                    double E_b = rel_kin_energy / reduced_mass - (m1 + m2) / (0.3 * R_mH);
+                    double mu_crit = 19.1 * E_b / abs_Ehill + 25.6;
+                    if (1.3 > mu_crit){
+                        mu_crit = 1.3;
+                    }
+                    merger = cond > mu_crit;
+                }
+                if (merger){
                     puts("Merger!\n");
                     p1->x = (m1 * p1->x + m2 * p2->x) / (m1 + m2);
                     p1->y = (m1 * p1->y + m2 * p2->y) / (m1 + m2);
@@ -233,8 +249,6 @@ void output_data(struct reb_simulation* r, char* filename){
         const double Lz = dx * dvy - dy * dvx;
         double incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz));
 
-        // char out_text[] = {r->t, '\t', p->hash, '\t', a, '\t', e, '\t', incl, '\t', mass, '\n'};
-        // fprintf(out_file, out_text);
         fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, a, e, incl, mass);
     }
     fclose(out_file);
@@ -251,7 +265,7 @@ void heartbeat(struct reb_simulation* r){
         output_data(r, "orbits.txt");
         reb_simulation_move_to_com(r); 
     }
-    if (reb_simulation_output_check(r, 10000.) && r->t > 10){
+    if (reb_simulation_output_check(r, 10000) && r->t > 0.5){
         add_BH(r, 1.);
     }
 }
@@ -383,6 +397,10 @@ void init_conds(int N, struct reb_simulation* r){
         double R = pow(dist, 1./3.);
         add_BH(r, R);
     }
+
+    if (MERGER_CRITERION == 1){
+        MUTUAL_HILL_PROP = 0.3;
+    }
 }
 
 
@@ -400,7 +418,8 @@ int main(int argc, char* argv[]){
     // Setup constants
     MIGRATION_PRESCRIPTION      = 1;     // set to jimenez and masset migration torques
     RAND_BH_MASSES              = 1;     // randomly sample bh masses
-    MUTUAL_HILL_PROP            = 1.;
+    MUTUAL_HILL_PROP            = 0.65;
+    MERGER_CRITERION            = 1;
 
     // r->integrator           = REB_INTEGRATOR_MERCURIUS;
     // r->dt                   = 1e-2; 
