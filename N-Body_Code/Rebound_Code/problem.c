@@ -23,15 +23,18 @@
 double* tau_a;     /**< Migration timescale in years for all particles */
 double* tau_e;     /**< Eccentricity damping timescale in years for all particles */
 double tmax;
-double agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, stefboltz, c_v;
+double agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
 const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.; 
-int num_BH = 0;  
+int num_BH                  = 0;            // integer value to track how many seed BHs we've had in total so far
 int MIGRATION_PRESCRIPTION  = 0;            // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
+int THERMAL_TORQUES         = 0;            // set to 1 to include thermal torques from Grishin et al (2023)
 int RAND_BH_MASSES          = 0;            // 0 for 10 solar mass seed BHs, 1 for randomly sampled masses
-int MERGER_KICKS            = 1;            // 0 for no kicks in mergers, 1 for kicks in random direction
-int MERGER_CRITERION        = 1;            // 0 for binding_energy < KE, 1 for criterion in Li et al
+int MERGER_KICKS            = 0;            // 0 for no kicks in mergers, 1 for kicks in random direction
+int MERGER_CRITERION        = 0;            // 0 for binding_energy < KE, 1 for criterion in Li et al
 double MUTUAL_HILL_PROP     = 1.;           // proportion of mutual hill radius to consider a merger
+double ACCRETION            = 0.;           // 0 for no accretion, any other number to simulate accretion at that *proportion* of the eddington limit
 
+// now define our data for our disk parameter splines
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
 const int n_sigma = 12, n_temp = 10, n_aratio = 17, n_opacity = 16;
 double sigma_data_r[] = {0.5, 1., 1.3, 1.5, 1.7, 2., 2.6, 3, 3.5, 4., 5.5, 7.};
@@ -154,7 +157,7 @@ void check_mergers(struct reb_simulation* r){
                     merger = cond > mu_crit;
                 }
                 if (merger){
-                    puts("Merger!\n");
+                    puts("\nMerger!");
                     p1->x = (m1 * p1->x + m2 * p2->x) / (m1 + m2);
                     p1->y = (m1 * p1->y + m2 * p2->y) / (m1 + m2);
                     p1->z = (m1 * p1->z + m2 * p2->z) / (m1 + m2);
@@ -277,7 +280,6 @@ void disk_forces(struct reb_simulation* r){
     struct reb_particle com = particles[0]; // calculate migration forces with respect to center of mass;
 
     for (int i=1; i<N; i++){
-        // printf("%d", i);
         struct reb_particle* p = &(particles[i]); // get the particle
         // first calculate the radius of the particle
         const double dx = p->x-com.x;
@@ -322,27 +324,30 @@ void disk_forces(struct reb_simulation* r){
         p->ay += -1. * dx * Gamma_mag / radius;
 
         //// now look at Evgeni's thermal torques
-        double visc = 1e-2;
-        double H = asp_ratio * radius;
+        if (THERMAL_TORQUES == 1){
+            double visc = 1e-2;
+            double H = asp_ratio * radius;
+            
+            double dHdr = radius / H * (disk_aspratio_deriv(logr)); // r/H * (dln(h)/dlnr)
+            double dSigmadr = radius / Sigma * -alpha;
+            double drhodr = (H * dSigmadr - Sigma * dHdr) / (H*H);
+            double cs = angvel * H;
+            double dangveldr = -1.5 * angvel / radius;
+            double dcsdr = dangveldr * H + angvel * dHdr; 
+            double dPdr = -cs * (2 * density * dcsdr + cs * drhodr);
+            double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H*H * angvel;
+            double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
+            double L = 0, Lc = 1;      // set our bodies luminosity value to 0 so that it has no effect
+            if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
+                L = ACCRETION * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;     // some proportion (given by ACCRETION) of the eddington luminosity
+                Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
+            }
+            double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
+            double Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
+            p->ax += dy * Gamma_thermal / (mass * radius*radius);
+            p->ay += -1. * dx * Gamma_thermal / (mass * radius*radius);
+        }
         
-        double dHdr = radius / H * (disk_aspratio_deriv(logr)); // r/H * (dln(h)/dlnr)
-        double dSigmadr = radius / Sigma * -alpha;
-        double drhodr = (H * dSigmadr - Sigma * dHdr) / (H*H);
-        double cs = angvel * H;
-        double dangveldr = -1.5 * angvel / radius;
-        double dcsdr = dangveldr * H + angvel * dHdr; 
-        double dPdr = -cs * (2 * density * dcsdr + cs * drhodr);
-        double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H*H * angvel;
-        double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
-        // double Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;
-        int L = 0, Lc = 1;
-        double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
-        double Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
-        // printf("%e", Gamma_thermal);
-        p->ax += dy * Gamma_thermal / (mass * radius*radius);
-        p->ay += -1. * dx * Gamma_thermal / (mass * radius*radius);
-
-
         // now lets add in eccentricity/inclination damping
         double mu = G*(com.m + mass);
         double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
@@ -355,7 +360,6 @@ void disk_forces(struct reb_simulation* r){
         double e = sqrt(ex*ex + ey*ey + ez*ez);
         double eps = e / asp_ratio;
 
-
         // angular momentum vectors are the cross product of position and velocity
         const double Lx = dy * dvz - dz * dvy;
         const double Ly = dz * dvx - dx * dvz;
@@ -364,7 +368,6 @@ void disk_forces(struct reb_simulation* r){
         double l = incl / asp_ratio;
         double t_i = (tdamp / 0.544) * (1. - 0.3 * l*l + 0.24 * l*l*l + 0.14 * l * eps*eps);
         double t_e = (tdamp / 0.78) * (1. - 0.14*eps*eps + 0.06*eps*eps*eps + 0.18*eps*l*l);
-        // printf("%f %f %f\n", tdamp, t_e, l);
 
         // add the damping forces to the migration acceleration
         p->ax += -2. * vr * dx / (t_e * radius*radius); // eccentricity damping
@@ -385,7 +388,10 @@ void init_conds(int N, struct reb_simulation* r){
     velscale = sqrt(G_pc * agnmass / lenscale) * 1000.;
     massscale = agnmass * M_odot;
     stefboltz = 5.67e-8 * lenscale_m*lenscale_m * timescale;         // non-dimensionalised boltzmann constant
-    c_v = 14304. * massscale;
+    c_v = 14304. * massscale;       // specific heat capacity of H2 gas, non-dimensionalised
+    c_nbody = c / velscale;         // non-dimensionalised speed of light
+    m_p = 1.67e-27 / massscale;     // proton mass
+    sigma_T = 6.65e-29 / (lenscale_m*lenscale_m);       // thompson scattering cross-section of an electron
 
     // double theta, dist, R, des_vel, angle, xprop, yprop, zprop, mult;
     struct reb_particle p = {0}; // smbh
@@ -415,17 +421,16 @@ int main(int argc, char* argv[]){
     // your web browser to http://localhost:1234
     reb_simulation_start_server(r, 1234);
 
-    // Setup constants
-    MIGRATION_PRESCRIPTION      = 1;     // set to jimenez and masset migration torques
-    RAND_BH_MASSES              = 1;     // randomly sample bh masses
-    MUTUAL_HILL_PROP            = 0.65;
-    MERGER_CRITERION            = 1;
+    // Setup simulation features
+    THERMAL_TORQUES             = 1;
+    MIGRATION_PRESCRIPTION      = 1;        // set to jimenez and masset migration torques
+    RAND_BH_MASSES              = 1;        // randomly sample bh masses
+    MUTUAL_HILL_PROP            = 0.65;     //
+    MERGER_CRITERION            = 1;        // set to Li et al (2023)
+    MERGER_KICKS                = 1;        //
+    ACCRETION                   = 0.2;      // 0.2 eddington luminosity
 
-    // r->integrator           = REB_INTEGRATOR_MERCURIUS;
-    // r->dt                   = 1e-2; 
-    // r->ri_ias15.min_dt      = 1e-4 * r->dt;
-    // r->ri_mercurius.r_crit_hill = 5;        // 5 hill radii critical integrator switch over
-
+    // now set up integration parameters
     // r->integrator           = REB_INTEGRATOR_BS;
     r->integrator           = REB_INTEGRATOR_IAS15;
     // r->ri_ias15.epsilon     = 5e-10;
@@ -433,7 +438,7 @@ int main(int argc, char* argv[]){
     r->additional_forces    = disk_forces;     //Set function pointer to add dissipative forces.
     r->heartbeat            = heartbeat;        // checks for mergers and outputs data
     r->force_is_velocity_dependent = 1;
-    tmax                    = 80000.;
+    tmax                    = 80000.;       // multiply by ~1.4 to get the approximate number of years (1e8M SMBH)
     r->rand_seed            = 2399;
 
     // Initial conditions
