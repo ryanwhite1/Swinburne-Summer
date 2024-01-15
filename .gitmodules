@@ -1,0 +1,3 @@
+[submodule "COMPAS"]
+	path = COMPAS
+	url = https://github.com/TeamCOMPAS/COMPAS

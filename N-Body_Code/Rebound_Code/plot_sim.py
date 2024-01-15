@@ -91,6 +91,7 @@ for i in range(1, N+1):
     
     ### now to overlay the mass changes
     masses = particle_data[:, 5] * SMBHMass
+    axes[0].text(real_times[0], semi_majors[0], f"{masses[0]:.1f}", c=line.get_color(), fontsize=4, ha='right')
     unique_masses = np.unique(masses)
     if len(unique_masses) > 1:
         for j in range(1, len(unique_masses)):

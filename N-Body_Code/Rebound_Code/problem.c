@@ -24,7 +24,9 @@ double* tau_e;     /**< Eccentricity damping timescale in years for all particle
 double tmax;
 double agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, stefboltz, c_v;
 const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.; 
-int num_BH;
+int num_BH = 0;  
+int MIGRATION_PRESCRIPTION = 0;     // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
+int RAND_BH_MASSES = 0;             // 0 for 10 solar mass seed BHs, 1 for randomly sampled masses
 
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
 const int n_sigma = 12, n_temp = 10, n_aratio = 17, n_opacity = 16;
@@ -87,6 +89,21 @@ double disk_temp_deriv(double logr){
 }
 double disk_aspratio_deriv(double logr){
     return splderiv(aratio_data_r, aratio_data, log_aratio_spline, n_aratio, logr);
+}
+
+double lognormal_mass(struct reb_simulation* r){
+    // box-muller transform for normally distributed random numbers     https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
+    double mean = 1.21, sd = 0.2, lower = 0.3, upper = 1.65;
+    double z0 = 0;
+    while (lower > z0 || upper < z0){       // check to see if the mass is outside of our bounds
+        double r1 = reb_random_uniform(r, 0.0, 1.);
+        double r2 = reb_random_uniform(r, 0.0, 1.);
+
+        z0 = sqrt(-2. * log(r1)) * sin(2. * M_PI * r2);
+        z0 *= sd;
+        z0 += mean;
+    }
+    return pow(10., z0);    // we were generating log-normal RVs, so transform back to normal
 }
 
 
@@ -153,11 +170,11 @@ void check_mergers(struct reb_simulation* r){
     }
 }
 
-void add_BH(struct reb_simulation* r){
+void add_BH(struct reb_simulation* r, double distance){
     num_BH += 1;
     struct reb_particle p = {0};
     double theta = reb_random_uniform(r, 0.0, 2.*M_PI);
-    double R = 1;
+    double R = distance;
     p.x = R * cos(theta); // x
     p.y = R * sin(theta); // y
     p.z = 0.0; // z
@@ -171,7 +188,12 @@ void add_BH(struct reb_simulation* r){
     p.vx = xprop; 
     p.vy = yprop; 
     p.vz = zprop;
-    p.m = 1.0e-7; // 10 solar mass BH.
+    if (RAND_BH_MASSES == 0){
+            p.m = 1.0e-7; // 10 solar mass BH.
+    }
+    else if (RAND_BH_MASSES == 1){
+        p.m = lognormal_mass(r) / agnmass;
+    }
     p.hash = num_BH;
     reb_simulation_add(r, p);
 }
@@ -226,8 +248,8 @@ void heartbeat(struct reb_simulation* r){
         output_data(r, "orbits.txt");
         reb_simulation_move_to_com(r); 
     }
-    if (reb_simulation_output_check(r, 10000.) && r->t > 1){
-        add_BH(r);
+    if (reb_simulation_output_check(r, 10000.) && r->t > 10){
+        add_BH(r, 1.);
     }
 }
 
@@ -254,16 +276,29 @@ void disk_forces(struct reb_simulation* r){
         // now define constants and calculate disk properties at this radius
         double logr = log10(radius / nondim_rs), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
         double kappa = disk_opacity(logr), temp = disk_temp(logr);
+        double density = Sigma / (asp_ratio * radius);  // sigma / H
 
         double tau = kappa * Sigma / 2, tau_eff = 3 * tau / 8 + sqrt(3) / 4 + 1. / (4 * tau);    // define optical depth params
         // start with the Type I migration as in Pardekooper (?)
         double alpha = -disk_sigma_deriv(logr), beta = -disk_temp_deriv(logr), xi = beta - (gamma_coeff - 1) * alpha; // define disk gradient properties
-        double Theta = (c_v * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * pow(temp, 3));
         double Gamma_0 = (q/asp_ratio)*(q/asp_ratio) * Sigma * radius*radius*radius*radius * angvel*angvel;
+        double Gamma = 0;
+        if (MIGRATION_PRESCRIPTION == 0){
+            double Theta = (c_v * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * pow(temp, 3));
+            double Gamma_iso = -0.85 - alpha - 0.9 * beta;
+            double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma_coeff) / gamma_coeff;
+            Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
+        }
+        else if (MIGRATION_PRESCRIPTION == 1){
+            double R_mu = 8.3145 / (2.016 / 1000.) * massscale;     // ideal gass constant over the mean molecular weight of H2, nondimensionalised
+            // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
+            double chi_chi_c = (16. * (gamma_coeff - 1.) * stefboltz * temp*temp*temp / (3. * density*density * R_mu * kappa)) / (radius*radius * asp_ratio*asp_ratio * angvel);
+            double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);
+            double Gamma_lindblad = - (2.34 - 0.1 * alpha + 1.5 * beta) * fx;
+            double Gamma_simp_corot = (0.46 - 0.96 * alpha + 1.8 * beta) / gamma_coeff;
+            Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
+        }
 
-        double Gamma_iso = -0.85 - alpha - 0.9 * beta;
-        double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma_coeff) / gamma_coeff;
-        double Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
         double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
         // add migration to the acceleration total
         p->ax += dy * Gamma_mag / radius;
@@ -272,7 +307,7 @@ void disk_forces(struct reb_simulation* r){
         //// now look at Evgeni's thermal torques
         double visc = 1e-2;
         double H = asp_ratio * radius;
-        double density = Sigma / (asp_ratio * radius);  // sigma / H
+        
         double dHdr = radius / H * (disk_aspratio_deriv(logr)); // r/H * (dln(h)/dlnr)
         double dSigmadr = radius / Sigma * -alpha;
         double drhodr = (H * dSigmadr - Sigma * dHdr) / (H*H);
@@ -341,26 +376,9 @@ void init_conds(int N, struct reb_simulation* r){
     reb_simulation_add(r, p);
     // uniformly (and randomly) distribute points in the unit disk
     for (int i = 1; i <= N; i++){   // start from i=1 because we want the SMBH to be at i=0
-        struct reb_particle p = {0};
-        double theta = reb_random_uniform(r, 0.0, 2.*M_PI);
-        double dist = reb_random_uniform(r, 0.5*0.5*0.5, 1.0);
-        double R = pow(dist, 1.0/3);
-        p.x = R * cos(theta); // x
-        p.y = R * sin(theta); // y
-        p.z = 0.0; // z
-        double des_vel = sqrt(1./R);
-        double angle = atan2(p.y, p.x); // arctan2(y, x)
-        double xprop = sin(angle);
-        double yprop = -cos(angle);
-        double zprop = 0.0;
-        double mult = sqrt(des_vel*des_vel / (xprop*xprop + yprop*yprop + zprop*zprop));
-        xprop *= mult; yprop *= mult; zprop *= mult;
-        p.vx = xprop; 
-        p.vy = yprop; 
-        p.vz = zprop;
-        p.m = 1.0e-7; // 10 solar mass BH.
-        p.hash = i;
-        reb_simulation_add(r, p);
+        double dist = reb_random_uniform(r, 0.5*0.5*0.5, 1.);
+        double R = pow(dist, 1./3.);
+        add_BH(r, R);
     }
 }
 
@@ -377,6 +395,9 @@ int main(int argc, char* argv[]){
     reb_simulation_start_server(r, 1234);
 
     // Setup constants
+    MIGRATION_PRESCRIPTION     = 1;     // set to jimenez and masset migration torques
+    RAND_BH_MASSES             = 1;     // randomly sample bh masses
+
     // r->integrator           = REB_INTEGRATOR_MERCURIUS;
     // r->dt                   = 1e-2; 
     // r->ri_ias15.min_dt      = 1e-4 * r->dt;
@@ -392,9 +413,9 @@ int main(int argc, char* argv[]){
     tmax                    = 80000.;
     r->rand_seed            = 2399;
 
-    num_BH = 10;
     // Initial conditions
-    init_conds(num_BH, r);
+    initial_BH = 10;
+    init_conds(initial_BH, r);
 
     reb_simulation_move_to_com(r);          
 
@@ -402,5 +423,3 @@ int main(int argc, char* argv[]){
 
     reb_simulation_integrate(r, tmax);
 }
-
-
