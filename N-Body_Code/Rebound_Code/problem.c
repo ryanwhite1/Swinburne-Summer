@@ -20,11 +20,10 @@
 #include "rebound.h"
 #include "spline.h"
 
-double* tau_a;     /**< Migration timescale in years for all particles */
-double* tau_e;     /**< Eccentricity damping timescale in years for all particles */
-double tmax;
-double agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
-const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.; 
+// initialise variables and simulation feature variables
+double tmax, agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
+const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.;
+const double spin_mult      = 1e10;         // I'm storing the BH spins in the particle radius parameter (cursed, I know), so divide it by this huge multiplier so that the radius of the particle doesn't actually have any effect (e.g. with collisions)
 int num_BH                  = 0;            // integer value to track how many seed BHs we've had in total so far
 int MIGRATION_PRESCRIPTION  = 0;            // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
 int THERMAL_TORQUES         = 0;            // set to 1 to include thermal torques from Grishin et al (2023)
@@ -36,22 +35,24 @@ double ACCRETION            = 0.;           // 0 for no accretion, any other num
 int ADD_BH_RAND_TIME        = 0.;           // 0 for adding BHs at regular intervals, 1 for adding them at exponential randomly distributed times
 double ADD_BH_INTERVAL      = 1e5;          // if ADD_BH_RAND_TIME==0, this is the interval for adding. if ==1, this is the mean of the distribution
 double NEXT_ADD_TIME        = 0.;           // variable to say when to add the next BH
+int BH_SPINS                = 0;            // 1 if simulating BH spins from NR fits, 0 if BHs are non-spinning
 
-// now define our data for our disk parameter splines
+// now define our data for our disk parameter splines. start by initialising some needed arrays and constants
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
 const int n_sigma = 12, n_temp = 10, n_aratio = 17, n_opacity = 16;
-double sigma_data_r[] = {0.5, 1., 1.3, 1.5, 1.7, 2., 2.6, 3, 3.5, 4., 5.5, 7.};
-double sigma_data[] = {3.6, 4.1, 4.5, 4.9, 5.1, 4.8, 5.9, 5.9, 5., 4., 2., 0.};
+// disk surface density spline data
+double sigma_data_r[] = {0.5, 1., 1.3, 1.5, 1.7, 2., 2.6, 3, 3.5, 4., 5.5, 7.}; // x data, units of log10 schwarzschild radii
+double sigma_data[] = {3.6, 4.1, 4.5, 4.9, 5.1, 4.8, 5.9, 5.9, 5., 4., 2., 0.}; // y data, cgs units on a log10 scale
 double log_sigma_spline[12];
-
+// disk temperature spline data
 double temp_data_r[] = {0.5, 1., 1.7, 2., 2.5, 3., 4., 5., 6., 7.};
 double temp_data[] = {5.95, 5.75, 5.4, 5.1, 5., 4.75, 4., 3.2, 2.5, 1.8};
 double log_temp_spline[10];
-
+// disk aspect ratio spline data
 double aratio_data_r[] = {0.5, 0.7, 1., 1.4, 1.7, 1.9, 2., 2.2, 2.6, 3., 3.1, 3.25, 3.5, 4., 5., 6., 7.};
 double aratio_data[] = {-0.7, -0.8, -0.92, -1.3, -1.45, -1.4, -1.4, -1.7, -2.1, -2.15, -2.1, -2., -1.8, -1.6, -1.05, -0.6, -0.1};
 double log_aratio_spline[17];
-
+// disk opacity spline data
 double opacity_data_r[] = {0.5, 1., 1.5, 1.7, 2., 2.5, 3., 3.5, 4., 4.1, 4.2, 4.5, 5., 5.5, 6., 7.};
 double opacity_data[] = {-0.4, -0.4, -0.4, -0.4, 0., -0.15, 0., -0.3, -0.4, -0.38, -0.4, -2., -3.1, -3.12, -3.15, -3.15};
 double log_opacity_spline[16];
@@ -68,8 +69,8 @@ double exponential_rv(struct reb_simulation* r, double mean){
     return x*x;
 }
 
-
 void eval_splines(){
+    // this evaluates the splines at run time (since we can't evaluate them at compile time).
     spline(sigma_data_r, sigma_data, n_sigma, log_sigma_spline);
     spline(temp_data_r, temp_data, n_temp, log_temp_spline);
     spline(aratio_data_r, aratio_data, n_aratio, log_aratio_spline);
@@ -130,23 +131,19 @@ void check_mergers(struct reb_simulation* r){
     for (int i = 1; i < N - 1; i++){
         struct reb_particle* p1 = &(particles[i]); // get the particle
         double m1 = p1->m;
-        const double dx1 = p1->x-com.x; const double dy1 = p1->y-com.y; const double dz1 = p1->z-com.z;
+        const double dx1 = p1->x-com.x, dy1 = p1->y-com.y, dz1 = p1->z-com.z;
         const double r1 = sqrt(dx1*dx1 + dy1*dy1 + dz1*dz1);
         for (int j = i + 1; j < N; j++){
             struct reb_particle* p2 = &(particles[j]); // get the particle
             double m2 = p2->m;
-            const double dx2 = p2->x-com.x; const double dy2 = p2->y-com.y; const double dz2 = p2->z-com.z;
+            const double dx2 = p2->x-com.x, dy2 = p2->y-com.y, dz2 = p2->z-com.z;
             const double r2 = sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2);
             double R_mH = pow((m1 + m2) / (3 * com.m), 1./3.) * (r1 + r2) / 2.;   // mutual hill radius
             double dist = sqrt((dx1-dx2)*(dx1-dx2) + (dy1-dy2)*(dy1-dy2) + (dz1-dz2)*(dz1-dz2));
             if (dist < (MUTUAL_HILL_PROP * R_mH)){
                 // now to check if their relative kinetic energy is low enough for capture
-                const double dvx1 = p1->vx-com.vx;
-                const double dvy1 = p1->vy-com.vy;
-                const double dvz1 = p1->vz-com.vz;
-                const double dvx2 = p2->vx-com.vx;
-                const double dvy2 = p2->vy-com.vy;
-                const double dvz2 = p2->vz-com.vz;
+                const double dvx1 = p1->vx-com.vx, dvy1 = p1->vy-com.vy, dvz1 = p1->vz-com.vz;
+                const double dvx2 = p2->vx-com.vx, dvy2 = p2->vy-com.vy, dvz2 = p2->vz-com.vz;
                 double reduced_mass = 1. / (1. / m1 + 1. / m2);
                 double rel_kin_energy = 0.5 * reduced_mass * ((dvx1-dvx2)*(dvx1-dvx2) + (dvy1-dvy2)*(dvy1-dvy2) + (dvz1-dvz2)*(dvz1-dvz2));
                 double binding_energy = m1 * m2 / (2. * R_mH);
@@ -166,15 +163,15 @@ void check_mergers(struct reb_simulation* r){
                 }
                 if (merger){
                     puts("\nMerger!");
+                    // set p1 as the merger remnant, with velocity and position as the mass-weighted average of the two merged particles
                     p1->x = (m1 * p1->x + m2 * p2->x) / (m1 + m2);
                     p1->y = (m1 * p1->y + m2 * p2->y) / (m1 + m2);
                     p1->z = (m1 * p1->z + m2 * p2->z) / (m1 + m2);
                     p1->vx = (m1 * p1->vx + m2 * p2->vx) / (m1 + m2);
                     p1->vy = (m1 * p1->vy + m2 * p2->vy) / (m1 + m2);
                     p1->vz = (m1 * p1->vz + m2 * p2->vz) / (m1 + m2);
-                    p1->m = 0.95 * (m1 + m2);
-
-                    if (MERGER_KICKS == 1){     // include a kick in a random direction
+                    p1->m = 0.95 * (m1 + m2);   // approximate the new mass as 95% of the sum of the masses
+                    if (MERGER_KICKS == 1 && BH_SPINS == 0){     // include a kick in a random direction
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q;
                         double A = 1.2 * 1e7 / velscale, B = -0.93;
                         double vel_kick = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * q / (opq*opq));
@@ -186,8 +183,34 @@ void check_mergers(struct reb_simulation* r){
                         p1->vx += xprop; 
                         p1->vy += yprop; 
                         printf("%e %e %e %e %e \n", A, q, vel_kick, xprop, p1->vx);
-                    }
+                    } else if (MERGER_KICKS == 1 && BH_SPINS == 1){ // include a kick in a semi-analytic direction
+                        // physics here modelled from chapter 14.3 of Maggiore, M. 2018, Gravitational Waves: Volume 2: Astrophysics and Cosmology, Gravitational Waves (Oxford University Press)
+                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
+                        double a1 = fmax(p1->r, p2->r) * spin_mult, a2 = fmin(p1->r, p2->r) * spin_mult;
+                        double aa1 = abs(a1), aa2 = abs(a2);   
+                        // const double Lx = dy * dvz - dz * dvy;
+                        // const double Ly = dz * dvx - dx * dvz;
+                        const double Lz = (dx1 - (dx1 + dx2)/2.) * (dvy1 - (dvy1 + dvy2)/2.) - (dy1 - (dy1 + dy2)/2.) * (dvx1 - (dvx1 + dvx2)/2.);
+                        const double norm_Lz = Lz / sqrt(Lz*Lz);
+                        double cos_alpha = aa1 * aa2;
+                        double cos_beta = aa1 * norm_Lz;
+                        double cos_gamma = aa2 * norm_Lz;
+                        double term1 = -0.129 / ((1. + q*q)*(1. + q*q)) * (a1*a1 + a2*a2*q*q*q*q + 2.*aa1*aa2*q*q*cos_alpha);
+                        double term2 = (-0.384 * nu - 2.686 + 2)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
+                        double term3 = 3.464 - 3.454*nu + 2.353*nu*nu;
+                        double l_mag = term1 + term2 + term3;
+                        double a_final = nu/q * (a1 + q*q * a2) + nu * l_mag * norm_Lz;
+                        p1->r = a_final / spin_mult;
 
+                        // now to model the kick
+                        double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale;
+                        double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
+                        double vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(a1 - q * a2);
+                        // double xi = arctan(vel_perp / vel_m);
+                        double theta = reb_random_uniform(r, 0.0, 2.*M_PI); // choose random direction for the mass asymmetry kick
+                        p1->vx += vel_m * cos(theta) - vel_perp * sin(theta);
+                        p1->vy += vel_m * sin(theta) + vel_perp * cos(theta);
+                    } 
                     reb_simulation_remove_particle(r, j, 1);
                     break_check = 1;
                     break;
@@ -202,7 +225,7 @@ void check_mergers(struct reb_simulation* r){
 
 void add_BH(struct reb_simulation* r, double distance){
     num_BH += 1;
-    struct reb_particle p = {0};
+    struct reb_particle p = {0};        // initialise BH with no spin
     double theta = reb_random_uniform(r, 0.0, 2.*M_PI);
     double R = distance;
     p.x = R * cos(theta); // x
@@ -260,7 +283,12 @@ void output_data(struct reb_simulation* r, char* filename){
         const double Lz = dx * dvy - dy * dvx;
         double incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz));
 
-        fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, a, e, incl, mass);
+        if (BH_SPINS == 0){
+            fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, a, e, incl, mass);
+        } else {
+            double spin = p->r * spin_mult;
+            fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, a, e, incl, mass, spin);
+        }
     }
     fclose(out_file);
 }
@@ -450,6 +478,7 @@ int main(int argc, char* argv[]){
     ACCRETION                   = 0.1;      // proportion of eddington luminosity onto the satellite BHs
     ADD_BH_RAND_TIME            = 1;        // add BHs with exponential time distribution
     ADD_BH_INTERVAL             = 1e4;      // add BHs with a mean of 10k time steps
+    BH_SPINS                    = 1;        // model spins of BHs during mergers
 
     // now set up integration parameters
     // r->integrator           = REB_INTEGRATOR_BS;
