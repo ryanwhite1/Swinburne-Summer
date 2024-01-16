@@ -33,6 +33,9 @@ int MERGER_KICKS            = 0;            // 0 for no kicks in mergers, 1 for 
 int MERGER_CRITERION        = 0;            // 0 for binding_energy < KE, 1 for criterion in Li et al
 double MUTUAL_HILL_PROP     = 1.;           // proportion of mutual hill radius to consider a merger
 double ACCRETION            = 0.;           // 0 for no accretion, any other number to simulate accretion at that *proportion* of the eddington limit
+int ADD_BH_RAND_TIME        = 0.;           // 0 for adding BHs at regular intervals, 1 for adding them at exponential randomly distributed times
+double ADD_BH_INTERVAL      = 1e5;          // if ADD_BH_RAND_TIME==0, this is the interval for adding. if ==1, this is the mean of the distribution
+double NEXT_ADD_TIME        = 0.;           // variable to say when to add the next BH
 
 // now define our data for our disk parameter splines
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
@@ -58,6 +61,11 @@ double uniform(double lower, double upper){
     // with thanks to https://stackoverflow.com/questions/63981013/generating-random-double-between-1-and-100-in-c?noredirect=1&lq=1
     double random = ((double) rand() / RAND_MAX) * (upper - lower) + lower;
     return random;
+}
+double exponential_rv(struct reb_simulation* r, double mean){
+    // see #Related_Distributions on https://en.wikipedia.org/wiki/Rayleigh_distribution
+    double x = reb_random_rayleigh(r, 1./sqrt(2. * 1./mean));
+    return x*x;
 }
 
 
@@ -268,9 +276,17 @@ void heartbeat(struct reb_simulation* r){
         output_data(r, "orbits.txt");
         reb_simulation_move_to_com(r); 
     }
-    if (reb_simulation_output_check(r, 10000) && r->t > 0.5){
-        add_BH(r, 1.);
+    if (ADD_BH_RAND_TIME == 0){
+        if (reb_simulation_output_check(r, ADD_BH_INTERVAL) && r->t > 0.5){
+            add_BH(r, 1.);
+        }
+    } else if (ADD_BH_RAND_TIME == 1){  // add BHs with exponential distribution
+        if (r->t > NEXT_ADD_TIME){
+            add_BH(r, 1.);
+            NEXT_ADD_TIME += exponential_rv(r, ADD_BH_INTERVAL);
+        }
     }
+    
 }
 
 void disk_forces(struct reb_simulation* r){
@@ -407,6 +423,9 @@ void init_conds(int N, struct reb_simulation* r){
     if (MERGER_CRITERION == 1){
         MUTUAL_HILL_PROP = 0.3;
     }
+    if (ADD_BH_RAND_TIME == 1){
+        NEXT_ADD_TIME = exponential_rv(r, ADD_BH_INTERVAL);
+    }
 }
 
 
@@ -428,7 +447,9 @@ int main(int argc, char* argv[]){
     MUTUAL_HILL_PROP            = 0.65;     //
     MERGER_CRITERION            = 1;        // set to Li et al (2023)
     MERGER_KICKS                = 1;        //
-    ACCRETION                   = 0.2;      // 0.2 eddington luminosity
+    ACCRETION                   = 0.1;      // proportion of eddington luminosity onto the satellite BHs
+    ADD_BH_RAND_TIME            = 1;        // add BHs with exponential time distribution
+    ADD_BH_INTERVAL             = 1e4;      // add BHs with a mean of 10k time steps
 
     // now set up integration parameters
     // r->integrator           = REB_INTEGRATOR_BS;
