@@ -118,6 +118,9 @@ struct reb_particle {
     double ax;
     double ay;
     double az;
+    double spin_x;
+    double spin_y;
+    double spin_z;
     double m;                   // mass
     double r;                   // physical radius
     double last_collision;      // Last time the particle had a physical collision.

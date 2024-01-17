@@ -71,16 +71,20 @@ fig, axes = plt.subplots(figsize=(10, 10), nrows=2, sharex=True, gridspec_kw={'h
 # rawdata[:, 5] *= SMBHMass
 # norm = plt.Normalize(rawdata[:, 5].min(), rawdata[:, 5].max())
 # cmap = 'viridis'
+fig2, ax2 = plt.subplots()
 
 for i in range(1, N+1):
     particle_data = rawdata[np.where(rawdata[:, 1] == i)[0], :]
     semi_majors = particle_data[:, 2] * Nr_s
     eccentricities = particle_data[:, 3]
+    inclinations = particle_data[:, 4]  # convert from rad to degrees
     real_times = time_convert(particle_data[:, 0], SMBHMass, lenscale)
     line, = axes[0].plot(real_times, semi_majors, lw=0.5)
     axes[1].plot(real_times, eccentricities, lw=0.5)
+    ax2.plot(real_times, inclinations, lw=0.5)
     for j in [0, 1]:
         axes[j].axvline(real_times[-1], ls='--', lw=0.5, c='k')
+    ax2.axvline(real_times[-1], ls='--', lw=0.5, c='k')
         
     # points = np.array([real_times, semi_majors * Nr_s]).T.reshape(-1, 1, 2)
     # segments = np.concatenate([points[:-1], points[1:]], axis=1)
@@ -105,6 +109,8 @@ axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes[0], label='Mass ($M_\odot$)', 
 #              location='top', orientation='horizontal', aspect=50, pad=0)
 fig.savefig('NBody_a-e_Plot.png', dpi=500, bbox_inches='tight')
+ax2.set(xlabel="Time (Myr)", ylabel='Inclination (degrees)')
+fig2.savefig('NBody_inclination_Plot.png', dpi=500, bbox_inches='tight')
 # plt.close('all')
 
 ### now to plot the binary mass and binary mass ratio plot
@@ -128,7 +134,6 @@ for i in range(1, N+1):
     spin_data = particle_data[:, 6]
     unique_spins = np.unique(spin_data, return_index=True)[1]
     unique_spins = [spin_data[index] for index in sorted(unique_spins)]
-    print(unique_spins)
     if len(unique_spins) > 1:
         for j in range(1, len(unique_spins)):
             spins.append(unique_spins[j])

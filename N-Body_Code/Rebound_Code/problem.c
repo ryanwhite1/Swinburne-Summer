@@ -186,30 +186,94 @@ void check_mergers(struct reb_simulation* r){
                     } else if (MERGER_KICKS == 1 && BH_SPINS == 1){ // include a kick in a semi-analytic direction
                         // physics here modelled from chapter 14.3 of Maggiore, M. 2018, Gravitational Waves: Volume 2: Astrophysics and Cosmology, Gravitational Waves (Oxford University Press)
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
-                        double a1 = fmax(p1->r, p2->r) * spin_mult, a2 = fmin(p1->r, p2->r) * spin_mult;
-                        double aa1 = abs(a1), aa2 = abs(a2);   
-                        // const double Lx = dy * dvz - dz * dvy;
-                        // const double Ly = dz * dvx - dx * dvz;
+                        double sx1 = p1->spin_x, sx2 = p2->spin_x, sy1 = p1->spin_y, sy2 = p2->spin_y, sz1 = p1->spin_z, sz2 = p2->spin_z;   
+                        const double spin1_modulus = sqrt(sx1*sx1 + sy1*sy1 + sz1*sz1), spin2_modulus = sqrt(sx2*sx2 + sy2*sy2 + sz2*sz2);
+                        double usx1 = 0., usy1 = 0., usz1 = 0., usx2 = 0., usy2 = 0., usz2 = 0.;
+                        if (spin1_modulus != 0){
+                            usx1 = sx1 / spin1_modulus, usy1 = sy1 / spin1_modulus, usz1 = sz1 / spin1_modulus;
+                        }
+                        if (spin2_modulus != 0){
+                            usx2 = sx2 / spin2_modulus, usy2 = sy2 / spin2_modulus, usz2 = sz2 / spin2_modulus; 
+                        }
+                        double aa1 = fmax(spin1_modulus, spin2_modulus), aa2 = fmin(spin1_modulus, spin2_modulus);
+                        const double Lx = (dy1 - (dy1 + dy2)/2.) * (dvz1 - (dvz1 + dvz2)/2.) - (dz1 - (dz1 + dz2)/2.) * (dvy1 - (dvy1 + dvy2)/2.);
+                        const double Ly = (dz1 - (dz1 + dz2)/2.) * (dvx1 - (dvx1 + dvx2)/2.) - (dx1 - (dx1 + dx2)/2.) * (dvz1 - (dvz1 + dvz2)/2.);
                         const double Lz = (dx1 - (dx1 + dx2)/2.) * (dvy1 - (dvy1 + dvy2)/2.) - (dy1 - (dy1 + dy2)/2.) * (dvx1 - (dvx1 + dvx2)/2.);
-                        const double norm_Lz = Lz / sqrt(Lz*Lz);
-                        double cos_alpha = aa1 * aa2;
-                        double cos_beta = aa1 * norm_Lz;
-                        double cos_gamma = aa2 * norm_Lz;
-                        double term1 = -0.129 / ((1. + q*q)*(1. + q*q)) * (a1*a1 + a2*a2*q*q*q*q + 2.*aa1*aa2*q*q*cos_alpha);
+                        const double ang_mom_modulus = sqrt(Lx*Lx + Ly*Ly + Lz*Lz);
+                        const double unit_Lx = Lx / ang_mom_modulus, unit_Ly = Ly / ang_mom_modulus, unit_Lz = Lz / ang_mom_modulus;
+                        double cos_alpha = usx1*usx2 + usy1*usy2 + usz1*usz2;
+                        double cos_beta = usx1*unit_Lx + usy1*unit_Ly + usz1*unit_Lz;
+                        double cos_gamma = usx2*unit_Lx + usy2*unit_Ly + usz2*unit_Lz;
+                        double term1 = -0.129 / ((1. + q*q)*(1. + q*q)) * (aa1*aa1 + aa2*aa2*q*q*q*q + 2.*aa1*aa2*q*q*cos_alpha);
                         double term2 = (-0.384 * nu - 2.686 + 2)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
                         double term3 = 3.464 - 3.454*nu + 2.353*nu*nu;
                         double l_mag = term1 + term2 + term3;
-                        double a_final = nu/q * (a1 + q*q * a2) + nu * l_mag * norm_Lz;
-                        p1->r = a_final / spin_mult;
+                        // double a_final = nu/q * (a1 + q*q * a2) + nu * l_mag * norm_Lz;
+                        // p1->r = a_final / spin_mult;
+                        if (m1 > m2){
+                            p1->spin_x = nu/q * (sx1 + q*q * sx2) + nu * l_mag * unit_Lx;
+                            p1->spin_y = nu/q * (sy1 + q*q * sy2) + nu * l_mag * unit_Ly;
+                            p1->spin_z = nu/q * (sz1 + q*q * sz2) + nu * l_mag * unit_Lz;
+                        } else {
+                            p1->spin_x = nu/q * (sx2 + q*q * sx1) + nu * l_mag * unit_Lx;
+                            p1->spin_y = nu/q * (sy2 + q*q * sy1) + nu * l_mag * unit_Ly;
+                            p1->spin_z = nu/q * (sz2 + q*q * sz1) + nu * l_mag * unit_Lz;
+                        }
 
                         // now to model the kick
-                        double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale;
+                        // double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
+                        // double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
+                        // double vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(a1 - q * a2);
+                        // // double xi = arctan(vel_perp / vel_m);
+                        // double theta = reb_random_uniform(r, 0.0, 2.*M_PI); // choose random direction for the mass asymmetry kick
+                        // p1->vx += vel_m * cos(theta) - vel_perp * sin(theta);
+                        // p1->vy += vel_m * sin(theta) + vel_perp * cos(theta);
+
+                        double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
+                        double alpha_rad = atan2(unit_Lz, unit_Lx), beta_rad = atan2(unit_Ly, unit_Lx);
+                        double s_ex1 = cos(beta_rad)*usx1 + sin(alpha_rad)*sin(beta_rad)*usy1 + cos(alpha_rad)*sin(beta_rad)*usz1;
+                        double s_ex2 = cos(beta_rad)*usx2 + sin(alpha_rad)*sin(beta_rad)*usy2 + cos(alpha_rad)*sin(beta_rad)*usz2;
+                        double s_ey1 = cos(alpha_rad)*usy1 - sin(alpha_rad)*usz1;
+                        double s_ey2 = cos(alpha_rad)*usy2 - sin(alpha_rad)*usz2;
+                        double s_ez1 = -sin(beta_rad)*usx1 + sin(alpha_rad)*cos(beta_rad)*usy1 + cos(alpha_rad)*cos(beta_rad)*usz1;
+                        double s_ez2 = -sin(beta_rad)*usx2 + sin(alpha_rad)*cos(beta_rad)*usy2 + cos(alpha_rad)*cos(beta_rad)*usz2;
+
                         double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
-                        double vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(a1 - q * a2);
-                        // double xi = arctan(vel_perp / vel_m);
+                        double vel_perp = 0.;
+                        if (m1 > m2){
+                            vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(s_ez1 - q * s_ez2);
+                        } else {
+                            vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(s_ez2 - q * s_ez1);
+                        }
                         double theta = reb_random_uniform(r, 0.0, 2.*M_PI); // choose random direction for the mass asymmetry kick
-                        p1->vx += vel_m * cos(theta) - vel_perp * sin(theta);
-                        p1->vy += vel_m * sin(theta) + vel_perp * cos(theta);
+                        double v_kick_e1 = vel_m * cos(theta) - vel_perp * sin(theta);
+                        double v_kick_e2 = vel_m * sin(theta) + vel_perp * cos(theta);
+                        double DEL_e1 = 0., DEL_e2 = 0., a_perp1 = 0., a_perp2 = 0.;
+                        if (m1 > m2){
+                            DEL_e1 = s_ex1 - q * s_ex2, DEL_e2 = s_ey1 - q * s_ey2;
+                            a_perp1 = sqrt(s_ex1*s_ex1 + s_ey1*s_ey1), a_perp2 = sqrt(s_ex2*s_ex2 + s_ey2*s_ey2);
+                        } else {
+                            DEL_e1 = s_ex2 - q * s_ex1, DEL_e2 = s_ey2 - q * s_ey1;
+                            a_perp1 = sqrt(s_ex2*s_ex2 + s_ey2*s_ey2), a_perp2 = sqrt(s_ex1*s_ex1 + s_ey1*s_ey1);
+                        }
+                        double v_kick_e3 = 0.;
+                        if (DEL_e1 != 0 && DEL_e2 != 0){
+                            double THETA = acos((DEL_e1*v_kick_e1 + DEL_e2*v_kick_e2) / (sqrt((DEL_e1*DEL_e1 + DEL_e2*DEL_e2)*(v_kick_e1*v_kick_e1 + v_kick_e2*v_kick_e2))));
+                            double phase = M_PI / 2.;
+                            v_kick_e3 = D * cos(THETA - phase) * 16*q*q/(opq*opq*opq*opq*opq) * abs(a_perp1 - q * a_perp2);
+                        }
+                        double rotation_determinant = cos(beta_rad)*cos(alpha_rad)*cos(alpha_rad)*cos(beta_rad) + sin(alpha_rad)*sin(beta_rad)*-sin(alpha_rad)*-sin(beta_rad);
+                        rotation_determinant += -cos(alpha_rad)*sin(beta_rad)*cos(alpha_rad)*-sin(beta_rad) - cos(beta_rad)*-sin(alpha_rad)*sin(alpha_rad)*cos(beta_rad);
+                        double sina = sin(alpha_rad), sinb = sin(beta_rad), cosa = cos(alpha_rad), cosb = cos(beta_rad);
+                        p1->vx += ((cosb*(cosa*cosa + sina*sina))*v_kick_e1 - (sinb*(sina*sina - cosa*cosa))*v_kick_e3) / rotation_determinant;
+                        p1->vy += ((sina*sinb)*v_kick_e1 + (cosa*(cosb*cosb + sinb*sinb))*v_kick_e2 + (sina*cosb)*v_kick_e3) / rotation_determinant;
+                        p1->vz += ((cosa*sinb)*v_kick_e1 - (sina*(cosb*cosb + sinb*sinb))*v_kick_e2 + (cosa*cosb)*v_kick_e3) / rotation_determinant;
+
+                        // double sina = sin(alpha_rad), sinb = sin(beta_rad), cosa = cos(alpha_rad), cosb = cos(beta_rad);
+                        // double rotation_determinant = cosa*cosa*cosb*cosb + sina*sina*sinb*sinb + cosa*cosa*sinb*sinb + sina*sina*cosb*cosb + cosa*cosb*sina*sinb*sinb;
+                        // p1->vx += ((cosa*cosb)*v_kick_e1 + (sina*sinb)*v_kick_e2 - (sinb*(sina*sina + cosa*cosa))*v_kick_e3) / rotation_determinant;
+                        // p1->vy += (-(sina*(cosb*cosb + sinb*sinb))*v_kick_e1 + (cosa*(cosb*cosb + sinb*sinb))*v_kick_e2) / rotation_determinant;
+                        // p1->vz += ((cosa*sinb)*v_kick_e1 + (sina*sinb)*v_kick_e2 + (cosa*cosa*cosb + sina*sina*sinb)*v_kick_e3) / rotation_determinant;
                     } 
                     reb_simulation_remove_particle(r, j, 1);
                     break_check = 1;
@@ -230,13 +294,13 @@ void add_BH(struct reb_simulation* r, double distance){
     double R = distance;
     p.x = R * cos(theta); // x
     p.y = R * sin(theta); // y
-    p.z = 0.0; // z
+    p.z = 0.1 * R * reb_random_uniform(r, -1., 1.); // z
     double des_vel = sqrt(1./R);
     double angle = atan2(p.y, p.x); // arctan2(y, x)
     double xprop = sin(angle);
     double yprop = -cos(angle);
-    double zprop = 0.0;
-    double mult = sqrt(des_vel*des_vel / (xprop*xprop + yprop*yprop + zprop*zprop));
+    double zprop = 0.;
+    double mult = des_vel * sqrt(1. / (xprop*xprop + yprop*yprop + zprop*zprop));
     xprop *= mult; yprop *= mult; zprop *= mult;
     p.vx = xprop; 
     p.vy = yprop; 
@@ -281,12 +345,12 @@ void output_data(struct reb_simulation* r, char* filename){
         const double Lx = dy * dvz - dz * dvy;
         const double Ly = dz * dvx - dx * dvz;
         const double Lz = dx * dvy - dy * dvx;
-        double incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz));
+        double incl = acos(-Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) * 180. / M_PI;
 
         if (BH_SPINS == 0){
             fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, a, e, incl, mass);
         } else {
-            double spin = p->r * spin_mult;
+            double spin = sqrt(p->spin_x*p->spin_x + p->spin_y*p->spin_y + p->spin_z*p->spin_z);
             fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, a, e, incl, mass, spin);
         }
     }
@@ -408,15 +472,21 @@ void disk_forces(struct reb_simulation* r){
         const double Lx = dy * dvz - dz * dvy;
         const double Ly = dz * dvx - dx * dvz;
         const double Lz = dx * dvy - dy * dvx;
-        double incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) - M_PI;
+        double incl = acos(- Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) / M_PI;
         double l = incl / asp_ratio;
         double t_i = (tdamp / 0.544) * (1. - 0.3 * l*l + 0.24 * l*l*l + 0.14 * l * eps*eps);
         double t_e = (tdamp / 0.78) * (1. - 0.14*eps*eps + 0.06*eps*eps*eps + 0.18*eps*l*l);
 
+        // printf("\n%f\n", t_i);
         // add the damping forces to the migration acceleration
         p->ax += -2. * vr * dx / (t_e * radius*radius); // eccentricity damping
         p->ay += -2. * vr * dy / (t_e * radius*radius); // eccentricity damping
         p->az += -2. * vr * dz / (t_e * radius*radius) - dvz / t_i; // eccentricity and inclination damping
+
+        if (e > 0.85){
+            puts("Ejected particle!")
+            reb_simulation_remove_particle(r, i, 1);
+        }
     }
 }
 
@@ -477,7 +547,7 @@ int main(int argc, char* argv[]){
     MERGER_KICKS                = 1;        //
     ACCRETION                   = 0.1;      // proportion of eddington luminosity onto the satellite BHs
     ADD_BH_RAND_TIME            = 1;        // add BHs with exponential time distribution
-    ADD_BH_INTERVAL             = 5e3;      // add BHs with a mean of 10k time steps
+    ADD_BH_INTERVAL             = 2e3;      // add BHs with a mean of 10k time steps
     BH_SPINS                    = 1;        // model spins of BHs during mergers
 
     // now set up integration parameters
@@ -492,7 +562,7 @@ int main(int argc, char* argv[]){
     r->rand_seed            = 2399;
 
     // Initial conditions
-    int initial_BH = 2;
+    int initial_BH = 10;
     init_conds(initial_BH, r);
 
     reb_simulation_move_to_com(r);          
