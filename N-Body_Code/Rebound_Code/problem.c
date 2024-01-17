@@ -484,7 +484,7 @@ void disk_forces(struct reb_simulation* r){
         p->az += -2. * vr * dz / (t_e * radius*radius) - dvz / t_i; // eccentricity and inclination damping
 
         if (e > 0.85){
-            puts("Ejected particle!")
+            puts("Ejected particle!");
             reb_simulation_remove_particle(r, i, 1);
         }
     }
