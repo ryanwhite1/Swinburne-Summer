@@ -34,7 +34,7 @@ double MUTUAL_HILL_PROP     = 1.;           // proportion of mutual hill radius 
 double ACCRETION            = 0.;           // 0 for no accretion, any other number to simulate accretion at that *proportion* of the eddington limit
 int ADD_BH_RAND_TIME        = 0.;           // 0 for adding BHs at regular intervals, 1 for adding them at exponential randomly distributed times
 double ADD_BH_INTERVAL      = 1e5;          // if ADD_BH_RAND_TIME==0, this is the interval for adding. if ==1, this is the mean of the distribution
-double NEXT_ADD_TIME        = 0.;           // variable to say when to add the next BH
+double NEXT_ADD_TIME        = 0.;           // variable to say when to add the next BH (used when randomly choosing the interval)
 int BH_SPINS                = 0;            // 1 if simulating BH spins from NR fits, 0 if BHs are non-spinning
 
 // now define our data for our disk parameter splines. start by initialising some needed arrays and constants
@@ -477,7 +477,7 @@ int main(int argc, char* argv[]){
     MERGER_KICKS                = 1;        //
     ACCRETION                   = 0.1;      // proportion of eddington luminosity onto the satellite BHs
     ADD_BH_RAND_TIME            = 1;        // add BHs with exponential time distribution
-    ADD_BH_INTERVAL             = 1e4;      // add BHs with a mean of 10k time steps
+    ADD_BH_INTERVAL             = 5e3;      // add BHs with a mean of 10k time steps
     BH_SPINS                    = 1;        // model spins of BHs during mergers
 
     // now set up integration parameters
@@ -492,7 +492,7 @@ int main(int argc, char* argv[]){
     r->rand_seed            = 2399;
 
     // Initial conditions
-    int initial_BH = 10;
+    int initial_BH = 2;
     init_conds(initial_BH, r);
 
     reb_simulation_move_to_com(r);          

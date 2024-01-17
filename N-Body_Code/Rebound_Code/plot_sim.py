@@ -104,5 +104,44 @@ axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
 axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes[0], label='Mass ($M_\odot$)', 
 #              location='top', orientation='horizontal', aspect=50, pad=0)
-fig.savefig('NBodyTest.png', dpi=400, bbox_inches='tight')
+fig.savefig('NBody_a-e_Plot.png', dpi=500, bbox_inches='tight')
 # plt.close('all')
+
+### now to plot the binary mass and binary mass ratio plot
+binary_mass = []
+binary_m_ratio = []
+spins = []
+simulated_spins = 1
+for i in range(1, N+1):
+    particle_data = rawdata[np.where(rawdata[:, 1] == i)[0], :]
+    masses = particle_data[:, 5] * SMBHMass
+    unique_masses = np.unique(masses)
+    if len(unique_masses) > 1:
+        for j in range(1, len(unique_masses)):
+            tot_mass = unique_masses[j] / 0.95
+            binary_mass.append(tot_mass)
+            m1 = unique_masses[j - 1]
+            m2 = tot_mass - m1
+            q = min(m1, m2) / max(m1, m2)
+            binary_m_ratio.append(q)
+    # try:
+    spin_data = particle_data[:, 6]
+    unique_spins = np.unique(spin_data, return_index=True)[1]
+    unique_spins = [spin_data[index] for index in sorted(unique_spins)]
+    print(unique_spins)
+    if len(unique_spins) > 1:
+        for j in range(1, len(unique_spins)):
+            spins.append(unique_spins[j])
+binary_mass = np.array(binary_mass); binary_m_ratio = np.array(binary_m_ratio); spins = np.array(spins)
+
+fig, ax = plt.subplots()
+_, _, _, cbar = ax.hist2d(binary_mass, binary_m_ratio, cmin=1)
+ax.set(xscale='log', yscale='log', xlabel='Binary Mass, $m_1 + m_2$ ($M_\odot$)', ylabel='Mass Ratio $q$ ($m_1 / m_2$)')
+fig.colorbar(cbar, label='Counts')
+fig.savefig('Q_vs_BinaryMass.png', dpi=400, bbox_inches='tight')
+
+if simulated_spins:
+    fig, ax = plt.subplots()
+    ax.hist(spins, bins=20, ec='k')
+    ax.set(xlabel="Dimensionless Spin Parameter", ylabel='Frequency')
+    fig.savefig('BH_Spins.png', dpi=400, bbox_inches='tight')
