@@ -410,7 +410,6 @@ void heartbeat(struct reb_simulation* r){
             NEXT_ADD_TIME += exponential_rv(r, ADD_BH_INTERVAL);
         }
     }
-    
 }
 
 void disk_forces(struct reb_simulation* r){

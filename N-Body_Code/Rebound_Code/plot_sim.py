@@ -109,47 +109,50 @@ axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes[0], label='Mass ($M_\odot$)', 
 #              location='top', orientation='horizontal', aspect=50, pad=0)
 fig.savefig('NBody_a-e_Plot.png', dpi=500, bbox_inches='tight')
-ax2.set(xlabel="Time (Myr)", ylabel='Inclination (degrees)')
+ax2.set(xlabel="Time (Myr)", ylabel='Inclination (degrees)', yscale='log')
 fig2.savefig('NBody_inclination_Plot.png', dpi=500, bbox_inches='tight')
-# plt.close('all')
+
 
 ### now to plot the binary mass and binary mass ratio plot
-binary_mass = []
-binary_m_ratio = []
-spins = []
-simulated_spins = 1
-for i in range(1, N+1):
-    particle_data = rawdata[np.where(rawdata[:, 1] == i)[0], :]
-    masses = particle_data[:, 5] * SMBHMass
-    unique_masses = np.unique(masses)
-    if len(unique_masses) > 1:
-        for j in range(1, len(unique_masses)):
-            tot_mass = unique_masses[j] / 0.95
-            binary_mass.append(tot_mass)
-            m1 = unique_masses[j - 1]
-            m2 = tot_mass - m1
-            q = min(m1, m2) / max(m1, m2)
-            binary_m_ratio.append(q)
-    # try:
-    spin_data = particle_data[:, 6]
-    unique_spins = np.unique(spin_data, return_index=True)[1]
-    unique_spins = [spin_data[index] for index in sorted(unique_spins)]
-    if len(unique_spins) > 1:
-        for j in range(1, len(unique_spins)):
-            spins.append(unique_spins[j])
-binary_mass = np.array(binary_mass); binary_m_ratio = np.array(binary_m_ratio); spins = np.array(spins)
+merger_data = np.genfromtxt('Mergers.txt')
+mergers = merger_data.shape[0]
+
+binary_masses = np.array([merger_data[i, 1] + merger_data[i, 2] for i in range(mergers)])
+binary_m_ratio = np.array([min(merger_data[i, 1], merger_data[i, 2]) / max(merger_data[i, 1], merger_data[i, 2]) for i in range(mergers)])
+effective_spins = merger_data[:, 4]
+remnant_spins = merger_data[:, 5]
 
 fig, ax = plt.subplots()
 n_bins = 10
-xbins = np.logspace(np.log10(min(binary_mass)), np.log10(max(binary_mass)), n_bins)
+xbins = np.logspace(np.log10(min(binary_masses)), np.log10(max(binary_masses)), n_bins)
 ybins = np.logspace(np.log10(min(binary_m_ratio)), np.log10(max(binary_m_ratio)), n_bins)
-_, _, _, cbar = ax.hist2d(binary_mass, binary_m_ratio, cmin=1, bins=[xbins, ybins])
+_, _, _, cbar = ax.hist2d(binary_masses, binary_m_ratio, cmin=1, bins=[xbins, ybins])
 ax.set(xscale='log', yscale='log', xlabel='Binary Mass, $m_1 + m_2$ ($M_\odot$)', ylabel='Mass Ratio $q$ ($m_1 / m_2$)')
 fig.colorbar(cbar, label='Counts')
 fig.savefig('Q_vs_BinaryMass.png', dpi=400, bbox_inches='tight')
 
-if simulated_spins:
-    fig, ax = plt.subplots()
-    ax.hist(spins, bins=20, ec='k')
-    ax.set(xlabel="Dimensionless Spin Parameter", ylabel='Frequency')
-    fig.savefig('BH_Spins.png', dpi=400, bbox_inches='tight')
+
+fig, ax = plt.subplots()
+ax.hist(remnant_spins, bins=20, ec='k')
+ax.set(xlabel="Dimensionless Spin Parameter", ylabel='Frequency')
+fig.savefig('BH_Spins.png', dpi=400, bbox_inches='tight')
+
+
+def callister(x, y):
+    # q-vs-chi_eff probability density function from callister (2021) - Who Ordered That? Unequal-mass Binary Black Hole Mergers Have Larger Effective Spins
+    return y**1.08 * np.exp(-(x - (0.19 - 0.46*(y - 0.5)))**2 / (2 * (10**(-1.06 - 0.83*(y - 0.5)))**2))
+fig, ax = plt.subplots()
+x = np.linspace(-1, 1, 100)
+y = np.linspace(0, 1, 100)
+z = np.ndarray((len(x), len(y)))
+for i in range(len(x)):
+    for j in range(len(y)):
+        z[i, j] = callister(x[i], y[j])
+ax.contourf(x, y, z.T, cmap='binary', alpha=0.3, levels=[0.01, 0.05, 0.16, 0.5, 0.84, 1], antialiased=True)
+cbar = ax.scatter(effective_spins, binary_m_ratio, c=merger_data[:, 8])
+ax.set(xlabel='$\chi_{eff}$', ylabel='Mass Ratio $q$ ($m_1 / m_2$)', xlim=[-1, 1], ylim=[0, 1])
+# ax.legend()
+fig.colorbar(cbar, label='BH Generation')
+fig.savefig('BH_Effective_Spins.png', dpi=400, bbox_inches='tight')
+
+plt.close('all')
