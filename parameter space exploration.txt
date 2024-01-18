@@ -6,3 +6,5 @@ accretion
 model merger spins with no initial spin
 
 van meter et al 2010 for analytic formulae -- tests of a general formula for black hole gravitational wave kicks
+
+output merger parameters	m1	m2	m_f	effective_spin	kick_vel

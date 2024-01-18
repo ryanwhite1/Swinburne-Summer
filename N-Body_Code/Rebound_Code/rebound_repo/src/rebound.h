@@ -118,9 +118,10 @@ struct reb_particle {
     double ax;
     double ay;
     double az;
-    double spin_x;
-    double spin_y;
-    double spin_z;
+    double spin_x;              // black hole dimensionless spin alpha_x
+    double spin_y;              // black hole dimensionless spin alpha_x
+    double spin_z;              // black hole dimensionless spin alpha_x
+    uint32_t generation;        // the generation of the black hole
     double m;                   // mass
     double r;                   // physical radius
     double last_collision;      // Last time the particle had a physical collision.

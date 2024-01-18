@@ -140,7 +140,10 @@ for i in range(1, N+1):
 binary_mass = np.array(binary_mass); binary_m_ratio = np.array(binary_m_ratio); spins = np.array(spins)
 
 fig, ax = plt.subplots()
-_, _, _, cbar = ax.hist2d(binary_mass, binary_m_ratio, cmin=1)
+n_bins = 10
+xbins = np.logspace(np.log10(min(binary_mass)), np.log10(max(binary_mass)), n_bins)
+ybins = np.logspace(np.log10(min(binary_m_ratio)), np.log10(max(binary_m_ratio)), n_bins)
+_, _, _, cbar = ax.hist2d(binary_mass, binary_m_ratio, cmin=1, bins=[xbins, ybins])
 ax.set(xscale='log', yscale='log', xlabel='Binary Mass, $m_1 + m_2$ ($M_\odot$)', ylabel='Mass Ratio $q$ ($m_1 / m_2$)')
 fig.colorbar(cbar, label='Counts')
 fig.savefig('Q_vs_BinaryMass.png', dpi=400, bbox_inches='tight')
