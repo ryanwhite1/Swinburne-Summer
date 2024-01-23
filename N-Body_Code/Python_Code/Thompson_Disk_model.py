@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 import scipy.optimize as opt
 import scipy.interpolate as interp
 
-# Teff = x[0], T = x[1], taueff = x[2], tau = x[3], kappa = x[4], Sigma = x[5], cs = x[6], rho = x[7], h = x[8], Q = x[9]
+# x[0] = T, x[1] = Sigma, x[2] = density, x[3] = H, x[4] = kappa, x[5] = pgas, x[6] = tau   
 
-root = [3.5, 5., 5., 6., 0., 6., 8., -10., -2., 4.]
+root = [5., 6., -9, -2, -1, 0, 6]
 G_pc = 4.3e-3
 G = 6.67e-11
 M_odot = 1.98e30
@@ -24,7 +24,6 @@ m_cgs = mu * m_H
 thomson_cross_sec = 6.65246e-29
 
 def kappa_formula(rho, T, log=False):
-    rho /= (T/1e6)**3
     if T <= 166.81:
         k0, a, b = 2e-4, 0, 2
     elif 166.81 < T <= 202.677:
@@ -47,7 +46,12 @@ def kappa_formula(rho, T, log=False):
             kap = 0.348
         return kap
     else:
+        # print(a * np.log10(rho))
         return np.log10(k0) + a * np.log10(rho) + b * np.log10(T)
+
+stef_boltz = 5.67037e-5    # cgs units
+k = 1.38065e-24        # cgs
+xi = 1
 
 kappa_data = np.genfromtxt('X07Y029Z001.txt')
 # kappa_data = np.genfromtxt('X07Y027Z003.txt')
@@ -57,53 +61,37 @@ kappa_interp = interp.RegularGridInterpolator((kappa_T, kappa_R), kappa_data[1:,
 
 
 def kappa_from_data(logrho, logT):
-    logR = logrho - (3. * (logT - 6.))
+    logR = logrho - (3 * (logT - 6))
     # print(logR)
-    if logR <= kappa_R[0]:
-        if logT <= kappa_T[0]:
-            return kappa_data[1, 1]
-        elif logT >= kappa_T[-1]:
-            return kappa_data[-1, 1]
-        else:
-            return kappa_interp([logT, kappa_R[0]])
-    elif logR >= kappa_R[-1]:
-        if logT <= kappa_T[0]:
-            return kappa_data[1, -1]
-        elif logT >= kappa_T[-1]:
-            return kappa_data[-1, -1]
-        else:
-            return kappa_interp([logT, kappa_R[-1]])
-    elif logT >= kappa_T[-1]:
-        return kappa_interp([kappa_T[-1], logR])
-    elif logT <= kappa_T[0]:
-        return kappa_interp([kappa_T[0], logR])
+    # if logR <= kappa_R[0]:
+    #     if logT <= kappa_T[0]:
+    #         return kappa_data[1, 1]
+    #     elif logT >= kappa_T[-1]:
+    #         return kappa_data[-1, 1]
+    # elif logR >= kappa_R[-1]:
+    #     if logT <= kappa_T[0]:
+    #         return kappa_data[1, -1]
+    #     elif logT >= kappa_T[-1]:
+    #         return kappa_data[-1, -1]
     return kappa_interp([logT, logR])
 
-stef_boltz = 5.67037e-5    # cgs units
-k = 1.38065e-24        # cgs
-
-def log_system(x, r, Mdot, angvel, alpha, c_cgs, m_cgs):
-    # Teff = x[0], T = x[1], taueff = x[2], tau = x[3], kappa = x[4], Sigma = x[5], cs = x[6], rho = x[7], h = x[8], Q = x[9]
-    eq1 = 4. * x[0] - np.log10(3. / (8. * np.pi * stef_boltz) * Mdot * angvel**2.)       # Teff
-    eq2 = x[1] * 4. - (x[3] + x[0] * 4)                                               # T
-    eq3 = x[2] - np.log10(3. * 10.**x[3] / 8. + 0.5 + 0.25 / (10.**x[3]))              # tau_eff
-    eq4 = x[3] - (x[4] + x[5] - np.log10(2))                                         # tau
-            # x[4] - kappa_formula(10.**x[7], 10.**x[1])
-    eq5 = x[4] - kappa_from_data(x[7], x[1])
-    eq6 = x[5] - (np.log10(Mdot * angvel / (3. * np.pi * alpha)) - 2. * x[6])
-    eq7 = x[8] + np.log10(r) - (x[6] - np.log10(angvel))
-    if x[9] > 0.:
-        eq8 = x[7] - (x[5] - np.log10(2) - (x[8] + np.log10(r)))
-    else:
-        eq8 = x[7] - np.log10(angvel**2. / (2. * np.pi * G*1e3))
-    eq9 = x[9] - max((np.log10(angvel**2. / (2. * np.pi * G*1e3)) - x[7]), 0.)
-    eq10 = 2. * x[6] - np.log10(k * 10.**x[1] / m_cgs + stef_boltz * 10.**x[3] * 10.**(4. * x[0]) / (2. * c_cgs * 10.**x[7]))
-     
-    return [eq1, eq2, eq3, eq4, eq5, eq6, eq7, eq8, eq9, eq10]         
-
+def log_system(x, r, rmin, Mdot, angvel, alpha, c_cgs, m_cgs):
+    # x[0] = T, x[1] = Sigma, x[2] = density, x[3] = H, x[4] = kappa, x[5] = pgas, x[6] = tau   
+    Teff = np.log10(3 * Mdot * angvel**2 * (1 - np.sqrt(rmin / r)) / (8 * np.pi * stef_boltz)) / 4
+    return [x[5] - (x[2] + x[0] + np.log10(k / m_cgs)),                                         # C4 -- pgas = rho * k_b * T / m
+            4 * x[0] - (4 * Teff + np.log10(3/4 * (10.**x[6] + 4/3 + 2 / (3 * 10.**x[6])))),    # C5 -- T^4 = 3/4 T_eff^4 (tau + 2/3tau + 4/3)
+            x[6] - (x[4] + x[1] - np.log10(2)),                                                 # C6 -- tau = kappa * Sigma / 2
+            x[1] - (np.log10(2) + x[2] + x[3] + np.log10(r)),                                   # C7 -- Sigma = 2 * rho * h * r
+            x[2] - (np.log10(Mdot / (4 * np.pi * r * angvel * 0.1)) - 2 * (x[3] + np.log10(r))),    # C8 -- Mdot = ...
+            # x[4] - kappa_formula(10.**x[2], 10.**x[0], log=True),                                             # 
+            x[4] - kappa_from_data(x[2], x[0]),
+            x[2] + 2 * (x[3] + np.log10(r)) + 2 * np.log10(angvel) - np.log10(10.**x[5] + 1e-3 * c_cgs * 10.**x[1] * angvel * (0.5 * 10.**x[6] + xi))]
 
 def angvel(r, M):
     return np.sqrt(G * M * M_odot / r**3)
+
+def dispersion(r, M):
+    return np.sqrt(G * M * M_odot / (2 * r))
 
 n = 1000
 
@@ -111,7 +99,7 @@ M = 1e8
 alpha = 1e-2
 f_edd = 0.1
 Mdot_edd = 4 * np.pi * G * M * M_odot * (m_H / 1e3) / (0.1 * thomson_cross_sec * c)
-Mdot = f_edd * Mdot_edd
+Mdot = f_edd * Mdot_edd * 1e3   # cgs
 rs_m = 2 * G * M * M_odot / c**2
 rs_cm = rs_m * 1e2
 r_min = 3 * rs_cm
@@ -122,23 +110,20 @@ temps, rho, Sigma, h, kappa, tau, Q = np.zeros(n), np.zeros(n), np.zeros(n), np.
 t_eff = np.zeros(n)
 
 for i, r in enumerate(radii):
-    Mdotdash = Mdot * (1 - np.sqrt(r_min / r))
     angvel_r = angvel(r / 100, M)
-    root = opt.fsolve(log_system, root, args=(r, Mdotdash, angvel_r, alpha, c_cgs, m_cgs))
-    # print(np.isclose(log_system(root, Mdotdash, angvel_r, alpha, c_cgs, m_cgs), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
-    temps[i] = 10**root[1]
-    Sigma[i] = 10**root[5]
-    rho[i] = 10**root[7]
-    h[i] = 10**root[8]
+    root = opt.fsolve(log_system, root, args=(r, r_min, Mdot, angvel_r, alpha, c_cgs, m_cgs))
+    temps[i] = 10**root[0]
+    Sigma[i] = 10**root[1]
+    rho[i] = 10**root[2]
+    h[i] = 10**root[3]
     kappa[i] = 10**root[4]
-    tau[i] = 10**root[3]
-    # Q[i] = max(h[i] * r * angvel_r**2 / (np.pi * G*1e3 * Sigma[i]), 1.4)
-    Q[i] = 10.**root[9]
+    tau[i] = 10**root[6]
+    Q[i] = max(angvel_r**2 / (np.sqrt(2) * np.pi * G*1e3 * rho[i]), 1.4)
     
 fig, axes = plt.subplots(nrows=6, sharex=True, figsize=(7, 10))
 
 axes[0].plot(log_radii, temps)
-axes[1].plot(log_radii, Sigma)
+axes[1].plot(log_radii, rho)
 axes[2].plot(log_radii, h)
 axes[3].plot(log_radii, kappa)
 axes[4].plot(log_radii, tau, label='approximated')
