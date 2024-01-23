@@ -55,7 +55,8 @@ def kappa_formula(rho, T, log=False):
     else:
         return np.log10(k0) + a * np.log10(rho) + b * np.log10(T)
 
-kappa_data = np.genfromtxt('X07Y029Z001.txt')
+# kappa_data = np.genfromtxt('X07Y029Z001.txt')
+kappa_data = np.genfromtxt('X070Y028Z002.txt')
 # kappa_data = np.genfromtxt('X07Y027Z003.txt')
 # kappa_data = np.genfromtxt('A96X070Y027Z003.txt')
 kappa_R = kappa_data[0, 1:]
@@ -109,7 +110,7 @@ def kappa_from_data(logrho, logT):
     # elif logT <= kappa_T[-1]:
     #     return kappa_interp([logT, logR])
     # return kappa_interp([logT, logR])
-    if logT < kappa_T[0]:
+    if logT <= low_kappa_T[-1]:
         if logR <= low_kappa_R[0]:
             if logT <= low_kappa_T[0]:
                 return lowtemp_kappa_data[0, 0]
@@ -117,12 +118,16 @@ def kappa_from_data(logrho, logT):
                 return low_kappa_interp([logT, low_kappa_R[0]])
         elif logR >= low_kappa_R[-1]:
             if logT <= low_kappa_T[0]:
-                return lowtemp_kappa_data[1, -1]
+                return lowtemp_kappa_data[0, -1]
             else:
                 return low_kappa_interp([logT, low_kappa_R[-1]])
         elif logT <= low_kappa_T[0]:
             return low_kappa_interp([low_kappa_T[0], logR])
-        return low_kappa_interp([logT, logR])
+        elif logT < kappa_T[0] and logT >= low_kappa_T[0]:
+            return low_kappa_interp([logT, logR])
+        prop = np.interp(logT, kappa_T_overlap, np.linspace(0, 1, len(kappa_T_overlap)))
+        return prop * kappa_interp([logT, logR]) + (1 - prop) * low_kappa_interp([logT, logR])
+        # return 0.5 * low_kappa_interp([logT, logR]) + 0.5 * kappa_interp([logT, logR])
     else:
         if logR <= kappa_R[0]:
             if logT >= kappa_T[-1]:
@@ -169,7 +174,7 @@ def angvel(r, M):
 
 n = 100
 
-M = 1e6
+M = 1e8
 alpha = 1e-2
 f_edd = 0.5
 Mdot_edd = 4 * np.pi * G * M * M_odot * (m_H / 1e3) / (0.1 * thomson_cross_sec * c)
@@ -177,7 +182,7 @@ Mdot_edd = 4 * np.pi * G_cgs * M * M_odot_cgs * m_H / (0.1 * thomson_cross_sec *
 Mdot = f_edd * Mdot_edd
 rs_m = 2 * G * M * M_odot / c**2
 rs_cm = 2 * G_cgs * M * M_odot_cgs / c_cgs**2
-r_min = 6 * rs_cm
+r_min = 3 * rs_cm
 
 log_radii = np.logspace(1.1 * np.log10(r_min / rs_cm), 6, n)
 radii = log_radii * rs_cm
@@ -195,16 +200,6 @@ for i, r in enumerate(radii):
     kappa[i] = 10**root[3]
     tau[i] = 10**root[2]
     Q[i] = max(10.**root[8], min_Q)
-    
-    
-    # root = opt.fsolve(system, root, args=(r, Mdotdash, angvel_r, alpha, c_cgs, m_cgs))
-    # temps[i] = root[1]
-    # Sigma[i] = root[4]
-    # rho[i] = root[6]
-    # h[i] = root[7]
-    # kappa[i] = root[3]
-    # tau[i] = root[2]
-    # Q[i] = max(root[8], min_Q)
     
     
 fig, axes = plt.subplots(nrows=6, sharex=True, figsize=(7, 10))
