@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <math.h>
 #include <time.h>
 #include "rebound.h"
@@ -39,23 +40,17 @@ int BH_SPINS                = 0;            // 1 if simulating BH spins from NR 
 
 // now define our data for our disk parameter splines. start by initialising some needed arrays and constants
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
-const int n_sigma = 12, n_temp = 10, n_aratio = 17, n_opacity = 16;
+const int n_spline_data = 100;
 // disk surface density spline data
-double sigma_data_r[] = {0.5, 1., 1.3, 1.5, 1.7, 2., 2.6, 3, 3.5, 4., 5.5, 7.}; // x data, units of log10 schwarzschild radii
-double sigma_data[] = {3.6, 4.1, 4.5, 4.9, 5.1, 4.8, 5.9, 5.9, 5., 4., 2., 0.}; // y data, cgs units on a log10 scale
-double log_sigma_spline[12];
+double log_sigma_spline[100];
 // disk temperature spline data
-double temp_data_r[] = {0.5, 1., 1.7, 2., 2.5, 3., 4., 5., 6., 7.};
-double temp_data[] = {5.95, 5.75, 5.4, 5.1, 5., 4.75, 4., 3.2, 2.5, 1.8};
-double log_temp_spline[10];
+double log_temp_spline[100];
 // disk aspect ratio spline data
-double aratio_data_r[] = {0.5, 0.7, 1., 1.4, 1.7, 1.9, 2., 2.2, 2.6, 3., 3.1, 3.25, 3.5, 4., 5., 6., 7.};
-double aratio_data[] = {-0.7, -0.8, -0.92, -1.3, -1.45, -1.4, -1.4, -1.7, -2.1, -2.15, -2.1, -2., -1.8, -1.6, -1.05, -0.6, -0.1};
-double log_aratio_spline[17];
+double log_aratio_spline[100];
 // disk opacity spline data
-double opacity_data_r[] = {0.5, 1., 1.5, 1.7, 2., 2.5, 3., 3.5, 4., 4.1, 4.2, 4.5, 5., 5.5, 6., 7.};
-double opacity_data[] = {-0.4, -0.4, -0.4, -0.4, 0., -0.15, 0., -0.3, -0.4, -0.38, -0.4, -2., -3.1, -3.12, -3.15, -3.15};
-double log_opacity_spline[16];
+double log_opacity_spline[100];
+
+double log_radii_data[100], log_sigma_data[100], log_temps_data[100], log_aratio_data[100], log_opacity_data[100];
 
 
 double uniform(double lower, double upper){
@@ -69,25 +64,50 @@ double exponential_rv(struct reb_simulation* r, double mean){
     return x*x;
 }
 
+void populate_spline_arrays(char* filename_format){
+    char r_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/log_radii_";
+    char sigma_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/Sigma_";
+    char temp_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/temps_";
+    char aratio_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/h_";
+    char opacity_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/kappa_";
+    strcat(r_filename, filename_format); strcat(r_filename, ".csv");
+    strcat(sigma_filename, filename_format); strcat(sigma_filename, ".csv");
+    strcat(temp_filename, filename_format); strcat(temp_filename, ".csv");
+    strcat(aratio_filename, filename_format); strcat(aratio_filename, ".csv");
+    strcat(opacity_filename, filename_format); strcat(opacity_filename, ".csv");
+    FILE *log_r_file = fopen(r_filename, "r"); // x data, units of log10 schwarzschild radii
+    FILE *sigma_file = fopen(sigma_filename, "r");  // y data, cgs units on a log10 scale
+    FILE *temp_file = fopen(temp_filename, "r");  // y data, cgs units on a log10 scale
+    FILE *aratio_file = fopen(aratio_filename, "r");  // y data, cgs units on a log10 scale
+    FILE *opacity_file = fopen(opacity_filename, "r"); // y data, cgs units on a log10 scale
+    for (int i = 0; i < n_spline_data; i++){
+        if (fscanf(log_r_file, "%le", &log_radii_data[i]));
+        if (fscanf(sigma_file, "%le", &log_sigma_data[i]));
+        if (fscanf(temp_file, "%le", &log_temps_data[i]));
+        if (fscanf(aratio_file, "%le", &log_aratio_data[i]));
+        if (fscanf(opacity_file, "%le", &log_opacity_data[i]));
+    }
+    fclose(log_r_file); fclose(sigma_file); fclose(temp_file); fclose(aratio_file); fclose(opacity_file); 
+}
 void eval_splines(){
     // this evaluates the splines at run time (since we can't evaluate them at compile time).
-    spline(sigma_data_r, sigma_data, n_sigma, log_sigma_spline);
-    spline(temp_data_r, temp_data, n_temp, log_temp_spline);
-    spline(aratio_data_r, aratio_data, n_aratio, log_aratio_spline);
-    spline(opacity_data_r, opacity_data, n_opacity, log_opacity_spline);
+    spline(log_radii_data, log_sigma_data, n_spline_data, log_sigma_spline);
+    spline(log_radii_data, log_temps_data, n_spline_data, log_temp_spline);
+    spline(log_radii_data, log_aratio_data, n_spline_data, log_aratio_spline);
+    spline(log_radii_data, log_opacity_data, n_spline_data, log_opacity_spline);
 }
 double disk_surfdens(double logr){
-    double sigma = pow(10., splint(sigma_data_r, sigma_data, log_sigma_spline, n_sigma, logr) + 1.); // +1 in power to go from cgs to SI
+    double sigma = pow(10., splint(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr) + 1.); // +1 in power to go from cgs to SI
     return sigma * lenscale_m * lenscale_m / massscale;
 }
 double disk_temp(double logr){
-    return pow(10., splint(temp_data_r, temp_data, log_temp_spline, n_temp, logr));
+    return pow(10., splint(log_radii_data, log_temps_data, log_temp_spline, n_spline_data, logr));
 }
 double disk_aspectratio(double logr){
-    return pow(10., splint(aratio_data_r, aratio_data, log_aratio_spline, n_aratio, logr));
+    return pow(10., splint(log_radii_data, log_aratio_data, log_aratio_spline, n_spline_data, logr));
 }
 double disk_opacity(double logr){
-    double kappa = pow(10., splint(opacity_data_r, opacity_data, log_opacity_spline, n_opacity, logr) - 1.); // -1 to go from cgs to SI
+    double kappa = pow(10., splint(log_radii_data, log_opacity_data, log_opacity_spline, n_spline_data, logr) - 1.); // -1 to go from cgs to SI
     return kappa * massscale / (lenscale_m * lenscale_m);
 }
 double disk_dens(double logr){
@@ -98,13 +118,13 @@ double disk_angvel(double logr){
     return omega * lenscale / velscale;
 }
 double disk_sigma_deriv(double logr){
-    return splderiv(sigma_data_r, sigma_data, log_sigma_spline, n_sigma, logr);
+    return splderiv(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr);
 }
 double disk_temp_deriv(double logr){
-    return splderiv(temp_data_r, temp_data, log_temp_spline, n_temp, logr);
+    return splderiv(log_radii_data, log_temps_data, log_temp_spline, n_spline_data, logr);
 }
 double disk_aspratio_deriv(double logr){
-    return splderiv(aratio_data_r, aratio_data, log_aratio_spline, n_aratio, logr);
+    return splderiv(log_radii_data, log_aratio_data, log_aratio_spline, n_spline_data, logr);
 }
 
 double lognormal_mass(struct reb_simulation* r){
@@ -402,11 +422,11 @@ void heartbeat(struct reb_simulation* r){
     }
     if (ADD_BH_RAND_TIME == 0){
         if (reb_simulation_output_check(r, ADD_BH_INTERVAL) && r->t > 0.5){
-            add_BH(r, 1.);
+            add_BH(r, 2.);
         }
     } else if (ADD_BH_RAND_TIME == 1){  // add BHs with exponential distribution
         if (r->t > NEXT_ADD_TIME){
-            add_BH(r, 1.);
+            add_BH(r, 2.);
             NEXT_ADD_TIME += exponential_rv(r, ADD_BH_INTERVAL);
         }
     }
@@ -525,8 +545,8 @@ void disk_forces(struct reb_simulation* r){
     }
 }
 
-void init_conds(int N, struct reb_simulation* r){
-    agnmass = 1e8;
+void init_conds(int N, int mass, struct reb_simulation* r){
+    agnmass = pow(10., mass);
     double Nr_s = 1e3;
     r_g = G_pc * agnmass / 9e10; r_s = 2. * r_g;
     lenscale = Nr_s * r_s;
@@ -550,7 +570,7 @@ void init_conds(int N, struct reb_simulation* r){
     // uniformly (and randomly) distribute points in the unit disk
     for (int i = 1; i <= N; i++){   // start from i=1 because we want the SMBH to be at i=0
         double dist = reb_random_uniform(r, 0.5*0.5*0.5, 1.);
-        double R = pow(dist, 1./3.);
+        double R = 2. * pow(dist, 1./3.);
         add_BH(r, R);
     }
 
@@ -566,8 +586,18 @@ void init_conds(int N, struct reb_simulation* r){
 
 int main(int argc, char* argv[]){
     // srand(time(NULL));
+    int mass;
+    double f_edd, alpha;
+    if (scanf("%d", &mass)); 
+    if (scanf("%lf", &f_edd)); 
+    if (scanf("%lf", &alpha));
+    char file_name_format[30];
+    sprintf(file_name_format, "M%d-f%.1lf-a%.2lf-b0", mass, f_edd, alpha);
+    populate_spline_arrays(file_name_format);
     eval_splines();
     struct reb_simulation* r = reb_simulation_create();
+
+    
     
     // Start the REBOUND visualization server. This
     // allows you to visualize the simulation by pointing 
@@ -598,8 +628,9 @@ int main(int argc, char* argv[]){
     r->rand_seed            = 2399;
 
     // Initial conditions
+    num_BH = 0;
     int initial_BH = 10;
-    init_conds(initial_BH, r);
+    init_conds(initial_BH, mass, r);
 
     reb_simulation_move_to_com(r);          
 

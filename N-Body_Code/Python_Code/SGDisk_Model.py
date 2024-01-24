@@ -75,13 +75,13 @@ def kappa_from_formula(rho, T, log=False, prescription='derdzinski'):
 # kappa_data = np.genfromtxt('X07Y029Z001.txt')
 # kappa_data = np.genfromtxt('X07Y027Z003.txt')
 # kappa_data = np.genfromtxt('A96X070Y027Z003.txt')
-kappa_data = np.genfromtxt('X070Y028Z002.txt')
+kappa_data = np.genfromtxt('disk_models/X070Y028Z002.txt')
 kappa_R = kappa_data[0, 1:]
 kappa_T = kappa_data[1:, 0]
 kappa_interp = interp.RegularGridInterpolator((kappa_T, kappa_R), kappa_data[1:, 1:], bounds_error=False)
 kappa_data = kappa_data[1:, 1:]
 
-lowtemp_kappa_data = np.genfromtxt('lowtempX07Y028Z002.txt')[::-1, :]
+lowtemp_kappa_data = np.genfromtxt('disk_models/lowtempX07Y028Z002.txt')[::-1, :]
 low_kappa_R = lowtemp_kappa_data[-1, 1:]
 low_kappa_T = lowtemp_kappa_data[:-1, 0]
 low_kappa_interp = interp.RegularGridInterpolator((low_kappa_T, low_kappa_R), lowtemp_kappa_data[1:, :-1], bounds_error=False)
@@ -96,19 +96,19 @@ def kappa_from_data(logrho, logT):
         return 0.76
     logR = logrho - (3. * (logT - 6.))
     if logT <= low_kappa_T[-1]:
-        if logR <= low_kappa_R[0]:
-            if logT <= low_kappa_T[0]:
+        if logR < low_kappa_R[0]:
+            if logT < low_kappa_T[0]:
                 return lowtemp_kappa_data[0, 0]
             else:
                 return low_kappa_interp([logT, low_kappa_R[0]])
-        elif logR >= low_kappa_R[-1]:
-            if logT <= low_kappa_T[0]:
+        elif logR > low_kappa_R[-1]:
+            if logT < low_kappa_T[0]:
                 return lowtemp_kappa_data[0, -1]
             else:
                 return low_kappa_interp([logT, low_kappa_R[-1]])
-        elif logT <= low_kappa_T[0]:
+        elif logT < low_kappa_T[0]:
             return low_kappa_interp([low_kappa_T[0], logR])
-        elif logT < kappa_T[0] and logT >= low_kappa_T[0]:
+        elif logT < kappa_T[0] and logT > low_kappa_T[0]:
             return low_kappa_interp([logT, logR])
         prop = np.interp(logT, kappa_T_overlap, np.linspace(0, 1, len(kappa_T_overlap)))
         return prop * kappa_interp([logT, logR]) + (1 - prop) * low_kappa_interp([logT, logR])
@@ -191,6 +191,7 @@ def save_disk_model(disk_params, location='', name='', save_all=False):
         os.mkdir(path)
     param_names = ['log_radii', 't_eff', 'temps', 'tau', 'kappa', 'Sigma', 'cs', 'rho', 'h', 'Q', 'beta', 'prad', 'pgas']
     filenames = [path + param + '_' + name + '.csv' for param in param_names]
+    disk_params[0] = np.log10(disk_params[0])
     if save_all:
         indices = np.arange(0, len(param_names))
     else:   # only saves parameter arrays for those relevant to migration in the nbody code

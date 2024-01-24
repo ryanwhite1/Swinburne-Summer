@@ -109,7 +109,7 @@ axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes[0], label='Mass ($M_\odot$)', 
 #              location='top', orientation='horizontal', aspect=50, pad=0)
 fig.savefig('NBody_a-e_Plot.png', dpi=500, bbox_inches='tight')
-ax2.set(xlabel="Time (Myr)", ylabel='Inclination (degrees)', yscale='log')
+ax2.set(xlabel="Time (Myr)", ylabel='Inclination (degrees)')
 fig2.savefig('NBody_inclination_Plot.png', dpi=500, bbox_inches='tight')
 
 
