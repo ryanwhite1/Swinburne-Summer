@@ -75,13 +75,13 @@ def kappa_from_formula(rho, T, log=False, prescription='derdzinski'):
 # kappa_data = np.genfromtxt('X07Y029Z001.txt')
 # kappa_data = np.genfromtxt('X07Y027Z003.txt')
 # kappa_data = np.genfromtxt('A96X070Y027Z003.txt')
-kappa_data = np.genfromtxt('disk_models/X070Y028Z002.txt')
+kappa_data = np.genfromtxt('TabulatedOpacities/X070Y028Z002.txt')
 kappa_R = kappa_data[0, 1:]
 kappa_T = kappa_data[1:, 0]
 kappa_interp = interp.RegularGridInterpolator((kappa_T, kappa_R), kappa_data[1:, 1:], bounds_error=False)
 kappa_data = kappa_data[1:, 1:]
 
-lowtemp_kappa_data = np.genfromtxt('disk_models/lowtempX07Y028Z002.txt')[::-1, :]
+lowtemp_kappa_data = np.genfromtxt('TabulatedOpacities/lowtempX07Y028Z002.txt')[::-1, :]
 low_kappa_R = lowtemp_kappa_data[-1, 1:]
 low_kappa_T = lowtemp_kappa_data[:-1, 0]
 low_kappa_interp = interp.RegularGridInterpolator((low_kappa_T, low_kappa_R), lowtemp_kappa_data[1:, :-1], bounds_error=False)

@@ -12,4 +12,5 @@ $MASS
 $FEDD 
 $ALPH
 EOF
-python3 plot_sim.py
+
+python3 plot_sim.py $MASS $FEDD $ALPH

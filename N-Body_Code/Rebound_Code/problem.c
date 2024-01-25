@@ -24,6 +24,7 @@
 // initialise variables and simulation feature variables
 double tmax, agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, r_isco, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
 const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.;
+char output_folder[200] = "./OUTPUT_", orbits_filename[200], positions_filename[200], mergers_filename[200], r_filename[200], sigma_filename[200], temp_filename[200], aratio_filename[200], opacity_filename[200];
 const double spin_mult      = 1e10;         // I'm storing the BH spins in the particle radius parameter (cursed, I know), so divide it by this huge multiplier so that the radius of the particle doesn't actually have any effect (e.g. with collisions)
 int num_BH                  = 0;            // integer value to track how many seed BHs we've had in total so far
 int MIGRATION_PRESCRIPTION  = 0;            // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
@@ -64,17 +65,28 @@ double exponential_rv(struct reb_simulation* r, double mean){
     return x*x;
 }
 
-void populate_spline_arrays(char* filename_format){
-    char r_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/log_radii_";
-    char sigma_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/Sigma_";
-    char temp_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/temps_";
-    char aratio_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/h_";
-    char opacity_filename[200] = "/mnt/c/Users/ryanw/Documents/GitHub/Swinburne-Summer/N-Body_Code/Rebound_Code/disk_models/kappa_";
-    strcat(r_filename, filename_format); strcat(r_filename, ".csv");
-    strcat(sigma_filename, filename_format); strcat(sigma_filename, ".csv");
-    strcat(temp_filename, filename_format); strcat(temp_filename, ".csv");
-    strcat(aratio_filename, filename_format); strcat(aratio_filename, ".csv");
-    strcat(opacity_filename, filename_format); strcat(opacity_filename, ".csv");
+void create_filenames(int mass, double f_edd, double alpha){
+    char file_name_format[40];
+    sprintf(file_name_format, "M%d-f%.2lf-a%.3lf", mass, f_edd, alpha);
+    char folder_suffix[20] = "/";
+    strcat(output_folder, file_name_format); strcat(output_folder, folder_suffix);
+    strcpy(orbits_filename, output_folder); strcat(orbits_filename, "orbits.txt");
+    strcpy(positions_filename, output_folder); strcat(positions_filename, "positions.txt");
+    strcpy(mergers_filename, output_folder); strcat(mergers_filename, "mergers.txt");
+    
+    // define names of disk property files
+    strcpy(r_filename, output_folder); strcat(r_filename, "log_radii_");
+    strcpy(sigma_filename, output_folder); strcat(sigma_filename, "Sigma_");
+    strcpy(temp_filename, output_folder); strcat(temp_filename, "temps_");
+    strcpy(aratio_filename, output_folder); strcat(aratio_filename, "h_");
+    strcpy(opacity_filename, output_folder); strcat(opacity_filename, "kappa_");
+    strcat(r_filename, file_name_format); strcat(r_filename, ".csv");
+    strcat(sigma_filename, file_name_format); strcat(sigma_filename, ".csv");
+    strcat(temp_filename, file_name_format); strcat(temp_filename, ".csv");
+    strcat(aratio_filename, file_name_format); strcat(aratio_filename, ".csv");
+    strcat(opacity_filename, file_name_format); strcat(opacity_filename, ".csv");
+}
+void populate_spline_arrays(){
     FILE *log_r_file = fopen(r_filename, "r"); // x data, units of log10 schwarzschild radii
     FILE *sigma_file = fopen(sigma_filename, "r");  // y data, cgs units on a log10 scale
     FILE *temp_file = fopen(temp_filename, "r");  // y data, cgs units on a log10 scale
@@ -134,7 +146,6 @@ double lognormal_mass(struct reb_simulation* r){
     while (lower > z0 || upper < z0){       // check to see if the mass is outside of our bounds
         double r1 = reb_random_uniform(r, 0.0, 1.);
         double r2 = reb_random_uniform(r, 0.0, 1.);
-
         z0 = sqrt(-2. * log(r1)) * sin(2. * M_PI * r2);
         z0 *= sd;
         z0 += mean;
@@ -335,7 +346,7 @@ void check_mergers(struct reb_simulation* r){
                         spin_eff = (1. + delta)*chi_1 / 2. + (1. - delta) * chi_2 / 2.;
                     } 
                     // now output merger details to file
-                    FILE *out_file = fopen("Mergers.txt", "a");
+                    FILE *out_file = fopen(mergers_filename, "a");
                     fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, m1*agnmass, m2*agnmass, kick_vel, spin_eff, nondim_spin, gen1, gen2, p1->generation);
                     fclose(out_file);
                     // now remove particle and end loop
@@ -424,6 +435,7 @@ void output_data(struct reb_simulation* r, char* filename){
     fclose(out_file);
 }
 
+
 void heartbeat(struct reb_simulation* r){
     check_mergers(r);
     if(reb_simulation_output_check(r, 20.*M_PI)){
@@ -432,7 +444,7 @@ void heartbeat(struct reb_simulation* r){
     if(reb_simulation_output_check(r, 1.)){
         reb_simulation_synchronize(r);
         // reb_simulation_output_orbits(r, "orbits.txt");
-        output_data(r, "orbits.txt");
+        output_data(r, orbits_filename);
         reb_simulation_move_to_com(r); 
     }
     if (ADD_BH_RAND_TIME == 0){
@@ -606,13 +618,10 @@ int main(int argc, char* argv[]){
     if (scanf("%d", &mass)); 
     if (scanf("%lf", &f_edd)); 
     if (scanf("%lf", &alpha));
-    char file_name_format[30];
-    sprintf(file_name_format, "M%d-f%.1lf-a%.2lf-b0", mass, f_edd, alpha);
-    populate_spline_arrays(file_name_format);
+    create_filenames(mass, f_edd, alpha);
+    populate_spline_arrays();
     eval_splines();
     struct reb_simulation* r = reb_simulation_create();
-
-    
     
     // Start the REBOUND visualization server. This
     // allows you to visualize the simulation by pointing 
@@ -643,15 +652,15 @@ int main(int argc, char* argv[]){
     r->rand_seed            = 2399;
 
     // Initial conditions
-    num_BH = 0;
     int initial_BH = 10;
     init_conds(initial_BH, mass, r);
 
     reb_simulation_move_to_com(r);          
 
     // delete previous output files
-    remove("orbits.txt"); 
-    remove("Mergers.txt");
+    remove(orbits_filename); 
+    remove(positions_filename);
+    remove(mergers_filename);
 
     reb_simulation_integrate(r, tmax);
 }

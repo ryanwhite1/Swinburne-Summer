@@ -1,12 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
-def eccentricity(position, velocity):
-    '''https://en.wikipedia.org/wiki/Eccentricity_vector
-    '''
-    radius = np.linalg.norm(position)
-    e = np.linalg.norm(np.cross(velocity, np.cross(position, velocity)) - position / radius)
-    return e
+from matplotlib.collections import LineCollection
+from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.cm import ScalarMappable
+import sys
 
 def time_convert(time, M, R):
     ''' Converts from n-body time to real time (in units of Myr).
@@ -25,46 +22,17 @@ def time_convert(time, M, R):
     Myr_sec = 31536000000000.0
     return time * np.sqrt(radius**3 / (mass * G)) / Myr_sec
 
-# Tmax = 20000
-# dt = 0.02
-# nt = int((Tmax - 0) / dt) + 1
-# NsBH = 10
-# NsBHMasses = np.ones(NsBH) * 10
-# SMBHMass = 1e8
-# r_s = 2 * 4.3e-3 * SMBHMass / 9e10  # 2GM / c^2     units of pc
-# Nr_s = 1e3      # number of schwarzschild radii to initialise the sim with respect to
-# lenscale = Nr_s * r_s
+SMBHMass = int(sys.argv[1])
+SMBHMass = 10.**SMBHMass
+f_edd = float(sys.argv[2])
+alpha = float(sys.argv[3])
 
-# rawdata = np.genfromtxt('orbits.txt')
-# r, c = rawdata.shape
-# rawdata = rawdata.reshape((10, r//10, c), order='F')
+folder = f'OUTPUT_M{int(np.log10(SMBHMass))}-f{f_edd:.2f}-a{alpha:.3f}/'
 
-# times = rawdata[0, :, 0]
-# # # positions = import_cpp_data("positions.txt")
-# # # velocities = import_cpp_data("velocities.txt")
-# nt = len(times)
-# dt = times[1] - times[0]
-
-# real_times = time_convert(times, SMBHMass + sum(NsBHMasses), lenscale)
-
-# fig, axes = plt.subplots(figsize=(10, 10), nrows=2, sharex=True, gridspec_kw={'hspace':0})
-# for i in range(10):
-#     semi_majors = rawdata[i, :, 1]
-#     eccentricities = rawdata[i, :, 2]
-#     axes[0].plot(real_times, semi_majors * Nr_s)
-#     axes[1].plot(real_times, eccentricities, lw=0.5)
-# axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
-# axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
-# fig.savefig('NBodyTest.png', dpi=400, bbox_inches='tight')
-from matplotlib.collections import LineCollection
-from matplotlib.colors import BoundaryNorm, ListedColormap
-from matplotlib.cm import ScalarMappable
-
-SMBHMass = 1e8
 r_s = 2 * 4.3e-3 * SMBHMass / 9e10  # 2GM / c^2     units of pc
 Nr_s = 1e3      # number of schwarzschild radii to initialise the sim with respect to
 lenscale = Nr_s * r_s
-rawdata = np.genfromtxt('orbits.txt')
+rawdata = np.genfromtxt(folder+'orbits.txt')
 N = int(rawdata[:, 1].max())
 fig, axes = plt.subplots(figsize=(10, 10), nrows=2, sharex=True, gridspec_kw={'hspace':0, 'height_ratios':[1.5, 1]})
 
@@ -108,13 +76,13 @@ axes[0].set(yscale='log', ylabel="Semi-Major Axis ($R_s$)")
 axes[1].set(yscale='log', xlabel="Time (Myr)", ylabel='Eccentricity')
 # fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes[0], label='Mass ($M_\odot$)', 
 #              location='top', orientation='horizontal', aspect=50, pad=0)
-fig.savefig('NBody_a-e_Plot.png', dpi=500, bbox_inches='tight')
+fig.savefig(folder+'NBody_a-e_Plot.png', dpi=500, bbox_inches='tight')
 ax2.set(xlabel="Time (Myr)", ylabel='Inclination (degrees)')
-fig2.savefig('NBody_inclination_Plot.png', dpi=500, bbox_inches='tight')
+fig2.savefig(folder+'NBody_inclination_Plot.png', dpi=500, bbox_inches='tight')
 
 
 ### now to plot the binary mass and binary mass ratio plot
-merger_data = np.genfromtxt('Mergers.txt')
+merger_data = np.genfromtxt(folder+'mergers.txt')
 mergers = merger_data.shape[0]
 
 binary_masses = np.array([merger_data[i, 1] + merger_data[i, 2] for i in range(mergers)])
@@ -129,13 +97,13 @@ ybins = np.logspace(np.log10(min(binary_m_ratio)), np.log10(max(binary_m_ratio))
 _, _, _, cbar = ax.hist2d(binary_masses, binary_m_ratio, cmin=1, bins=[xbins, ybins])
 ax.set(xscale='log', yscale='log', xlabel='Binary Mass, $m_1 + m_2$ ($M_\odot$)', ylabel='Mass Ratio $q$ ($m_1 / m_2$)')
 fig.colorbar(cbar, label='Counts')
-fig.savefig('Q_vs_BinaryMass.png', dpi=400, bbox_inches='tight')
+fig.savefig(folder+'Q_vs_BinaryMass.png', dpi=400, bbox_inches='tight')
 
 
 fig, ax = plt.subplots()
 ax.hist(remnant_spins, bins=20, ec='k')
 ax.set(xlabel="Dimensionless Spin Parameter", ylabel='Frequency')
-fig.savefig('BH_Spins.png', dpi=400, bbox_inches='tight')
+fig.savefig(folder+'BH_Spins.png', dpi=400, bbox_inches='tight')
 
 
 def callister(x, y):
@@ -153,6 +121,6 @@ cbar = ax.scatter(effective_spins, binary_m_ratio, c=merger_data[:, 8])
 ax.set(xlabel='$\chi_{eff}$', ylabel='Mass Ratio $q$ ($m_1 / m_2$)', xlim=[-1, 1], ylim=[0, 1])
 # ax.legend()
 fig.colorbar(cbar, label='BH Generation')
-fig.savefig('BH_Effective_Spins.png', dpi=400, bbox_inches='tight')
+fig.savefig(folder+'BH_Effective_Spins.png', dpi=400, bbox_inches='tight')
 
 plt.close('all')
