@@ -247,8 +247,6 @@ void check_mergers(struct reb_simulation* r){
                         double term2 = (-0.384 * nu - 2.686 + 2)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
                         double term3 = 3.464 - 3.454*nu + 2.353*nu*nu;
                         double l_mag = term1 + term2 + term3;
-                        // double a_final = nu/q * (a1 + q*q * a2) + nu * l_mag * norm_Lz;
-                        // p1->r = a_final / spin_mult;
                         if (m1 > m2){
                             p1->spin_x = nu/q * (sx1 + q*q * sx2) + nu * l_mag * unit_Lx;
                             p1->spin_y = nu/q * (sy1 + q*q * sy2) + nu * l_mag * unit_Ly;
@@ -259,6 +257,7 @@ void check_mergers(struct reb_simulation* r){
                             p1->spin_z = nu/q * (sz2 + q*q * sz1) + nu * l_mag * unit_Lz;
                         }
                         nondim_spin = sqrt(p1->spin_x*p1->spin_x + p1->spin_y*p1->spin_y + p1->spin_z*p1->spin_z);
+
                         // now calculate the new mass of the final BH
                         // equations from Barausse et al 2012
                         double const0 = 0.04826, const1 = 0.01559;
@@ -269,24 +268,11 @@ void check_mergers(struct reb_simulation* r){
                         double E_eq_isco = sqrt(1. - 2./r_eq_isco);
                         double eps_rad = (1. - E_eq_isco)*nu + 4.*nu*nu*(4.*const0 + 16.*const1*a_tilde*(a_tilde + 1.) + E_eq_isco - 1.);
                         p1->m = (m1 + m2) * (1. - eps_rad);
-                        // now to model the kick
-                        // double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
-                        // double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
-                        // double vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(a1 - q * a2);
-                        // // double xi = arctan(vel_perp / vel_m);
-                        // double theta = reb_random_uniform(r, 0.0, 2.*M_PI); // choose random direction for the mass asymmetry kick
-                        // p1->vx += vel_m * cos(theta) - vel_perp * sin(theta);
-                        // p1->vy += vel_m * sin(theta) + vel_perp * cos(theta);
 
+                        // now to model the kick
                         double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
                         double alpha_rad = atan2(unit_Lz, unit_Lx), beta_rad = atan2(unit_Ly, unit_Lx);
                         double sina = sin(alpha_rad), sinb = sin(beta_rad), cosa = cos(alpha_rad), cosb = cos(beta_rad);
-                        // double s_ex1 = cos(beta_rad)*usx1 + sin(alpha_rad)*sin(beta_rad)*usy1 + cos(alpha_rad)*sin(beta_rad)*usz1;
-                        // double s_ex2 = cos(beta_rad)*usx2 + sin(alpha_rad)*sin(beta_rad)*usy2 + cos(alpha_rad)*sin(beta_rad)*usz2;
-                        // double s_ey1 = cos(alpha_rad)*usy1 - sin(alpha_rad)*usz1;
-                        // double s_ey2 = cos(alpha_rad)*usy2 - sin(alpha_rad)*usz2;
-                        // double s_ez1 = -sin(beta_rad)*usx1 + sin(alpha_rad)*cos(beta_rad)*usy1 + cos(alpha_rad)*cos(beta_rad)*usz1;
-                        // double s_ez2 = -sin(beta_rad)*usx2 + sin(alpha_rad)*cos(beta_rad)*usy2 + cos(alpha_rad)*cos(beta_rad)*usz2;
 
                         double s_ex1 = cosa*cosb*usx1 - sina*usy1 + cosa*sinb*usz1;
                         double s_ex2 = cosa*cosb*usx2 - sina*usy2 + cosa*sinb*usz2;
@@ -319,13 +305,6 @@ void check_mergers(struct reb_simulation* r){
                             double phase = M_PI / 2.;
                             v_kick_e3 = D * cos(THETA - phase) * 16*q*q/(opq*opq*opq*opq*opq) * abs(a_perp1 - q * a_perp2);
                         }
-                        // double rotation_determinant = cos(beta_rad)*cos(alpha_rad)*cos(alpha_rad)*cos(beta_rad) + sin(alpha_rad)*sin(beta_rad)*-sin(alpha_rad)*-sin(beta_rad);
-                        // rotation_determinant += -cos(alpha_rad)*sin(beta_rad)*cos(alpha_rad)*-sin(beta_rad) - cos(beta_rad)*-sin(alpha_rad)*sin(alpha_rad)*cos(beta_rad);
-                        // double sina = sin(alpha_rad), sinb = sin(beta_rad), cosa = cos(alpha_rad), cosb = cos(beta_rad);
-                        // p1->vx += ((cosb*(cosa*cosa + sina*sina))*v_kick_e1 - (sinb*(sina*sina - cosa*cosa))*v_kick_e3) / rotation_determinant;
-                        // p1->vy += ((sina*sinb)*v_kick_e1 + (cosa*(cosb*cosb + sinb*sinb))*v_kick_e2 + (sina*cosb)*v_kick_e3) / rotation_determinant;
-                        // p1->vz += ((cosa*sinb)*v_kick_e1 - (sina*(cosb*cosb + sinb*sinb))*v_kick_e2 + (cosa*cosb)*v_kick_e3) / rotation_determinant;
-
                         
                         double rotation_determinant = cosa*cosa*cosb*cosb + sina*sina*sinb*sinb + cosa*cosa*sinb*sinb + sina*sina*cosb*cosb + cosa*cosb*sina*sinb*sinb;
                         p1->vx += ((cosa*cosb)*v_kick_e1 + (sina*sinb)*v_kick_e2 - (sinb*(sina*sina + cosa*cosa))*v_kick_e3) / rotation_determinant;
