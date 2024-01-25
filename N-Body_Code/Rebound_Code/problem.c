@@ -190,12 +190,15 @@ void check_mergers(struct reb_simulation* r){
                     p1->vx = (m1 * p1->vx + m2 * p2->vx) / (m1 + m2);
                     p1->vy = (m1 * p1->vy + m2 * p2->vy) / (m1 + m2);
                     p1->vz = (m1 * p1->vz + m2 * p2->vz) / (m1 + m2);
-                    p1->m = 0.95 * (m1 + m2);   // approximate the new mass as 95% of the sum of the masses
                     int gen1 = p1->generation, gen2 = p2->generation;
                     p1->generation = fmax(gen1, gen2) + 1;
                     double kick_vel = 0., spin_eff = 0., nondim_spin = 0.;
-                    if (MERGER_KICKS == 1 && BH_SPINS == 0){     // include a kick in a random direction
-                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q;
+                    if (MERGER_KICKS == 0){
+                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
+                        double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
+                        p1->m = (m1 + m2) * (1. - eps_rad);
+                    } else if (MERGER_KICKS == 1 && BH_SPINS == 0){     // include a kick in a random direction
+                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
                         double A = 1.2 * 1e7 / velscale, B = -0.93;
                         double vel_kick = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * q / (opq*opq));
                         double angle = reb_random_uniform(r, 0.0, 2.*M_PI);
@@ -206,6 +209,8 @@ void check_mergers(struct reb_simulation* r){
                         p1->vx += xprop; 
                         p1->vy += yprop; 
                         kick_vel = vel_kick * velscale / 1000.;
+                        double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
+                        p1->m = (m1 + m2) * (1. - eps_rad);
                     } else if (MERGER_KICKS == 1 && BH_SPINS == 1){ // include a kick in a semi-analytic direction
                         // physics here modelled from chapter 14.3 of Maggiore, M. 2018, Gravitational Waves: Volume 2: Astrophysics and Cosmology, Gravitational Waves (Oxford University Press)
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
@@ -243,6 +248,11 @@ void check_mergers(struct reb_simulation* r){
                             p1->spin_z = nu/q * (sz2 + q*q * sz1) + nu * l_mag * unit_Lz;
                         }
                         nondim_spin = sqrt(p1->spin_x*p1->spin_x + p1->spin_y*p1->spin_y + p1->spin_z*p1->spin_z);
+                        // now calculate the new mass of the final BH
+                        // equations from Barausse et al 2012
+                        double spin_ang_mom = spin1_modulus * cos_beta + spin2_modulus * cos_gamma;         // spin of the BHs along the orbital angular momentum
+                        double eps_rad = 0.04826 + 0.01559 * spin_ang_mom + 0.01559/4. * spin_ang_mom*spin_ang_mom;
+                        p1->m = (m1 + m2) * (1. - eps_rad);
                         // now to model the kick
                         // double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
                         // double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
