@@ -21,4 +21,4 @@ folder = '/disk_models/'
 save_disk_model(disk_params, location=folder, name=f'M{int(np.log10(Mass))}-f{f_edd}-a{alpha}-b{b}')
 plot_disk_model(disk_params, save=True, location=folder)
 
-print("Done")
+print("Disk successfully generated.")
