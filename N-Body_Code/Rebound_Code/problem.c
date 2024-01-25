@@ -250,8 +250,13 @@ void check_mergers(struct reb_simulation* r){
                         nondim_spin = sqrt(p1->spin_x*p1->spin_x + p1->spin_y*p1->spin_y + p1->spin_z*p1->spin_z);
                         // now calculate the new mass of the final BH
                         // equations from Barausse et al 2012
-                        double spin_ang_mom = spin1_modulus * cos_beta + spin2_modulus * cos_gamma;         // spin of the BHs along the orbital angular momentum
-                        double eps_rad = 0.04826 + 0.01559 * spin_ang_mom + 0.01559/4. * spin_ang_mom*spin_ang_mom;
+                        double p0 = 0.04826, p1 = 0.01559;
+                        double a_tilde = (spin1_modulus * cos_beta + q*q* spin2_modulus * cos_gamma) / (opq*opq);
+                        double Z1 = 1. + pow(1. - a_tilde*a_tilde, 1./3.) * (pow(1. + a_tilde, 1./3.) + pow(1. - a_tilde, 1./3.));
+                        double Z2 = sqrt(3 * a_tilde*a_tilde + Z1*Z1);
+                        double r_eq_isco = 3. + Z2 - (a_tilde / sqrt(a_tilde*a_tilde)) * sqrt((3. - Z1)*(3. + Z1 + 2.*Z2));
+                        double E_eq_isco = sqrt(1. - 2./r_eq_isco);
+                        double eps_rad = (1. - E_eq_isco)*nu + 4*nu*nu*(4.*p0 + 16.*p1*a_tilde*(a_tilde + 1.) + E_eq_isco - 1.);
                         p1->m = (m1 + m2) * (1. - eps_rad);
                         // now to model the kick
                         // double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;

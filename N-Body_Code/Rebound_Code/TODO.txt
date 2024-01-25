@@ -1,5 +1,4 @@
 - better colourmap for a-e plot
-- fix merger mass (not just 95%)
 - output disk model, all plots to a run-specific folder
 - output BH position data (perhaps just for first 40000 timesteps?) 
 	- python script to animate particle positions for these timesteps
