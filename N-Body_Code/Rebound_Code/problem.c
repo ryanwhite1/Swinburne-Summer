@@ -301,7 +301,7 @@ void check_mergers(struct reb_simulation* r){
                         }
                         double v_kick_e3 = 0.;
                         if (DEL_e1 != 0 && DEL_e2 != 0){
-                            double THETA = acos((DEL_e1*v_kick_e1 + DEL_e2*v_kick_e2) / (sqrt((DEL_e1*DEL_e1 + DEL_e2*DEL_e2)*(v_kick_e1*v_kick_e1 + v_kick_e2*v_kick_e2))));
+                            double THETA = acos((DEL_e1*cos(theta) + DEL_e2*sin(theta)) / (sqrt((DEL_e1*DEL_e1 + DEL_e2*DEL_e2))));
                             double phase = M_PI / 2.;
                             v_kick_e3 = D * cos(THETA - phase) * 16*q*q/(opq*opq*opq*opq*opq) * abs(a_perp1 - q * a_perp2);
                         }
