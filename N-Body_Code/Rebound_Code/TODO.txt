@@ -1,3 +1,2 @@
-- better colourmap for a-e plot
-- output BH position data (perhaps just for first 40000 timesteps?) 
-	- python script to animate particle positions for these timesteps
+- look at changing initial conditions
+- look at the frequency of adding BHs
