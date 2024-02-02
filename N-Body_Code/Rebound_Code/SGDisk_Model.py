@@ -10,6 +10,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as opt
 import scipy.interpolate as interp
+import warnings
+warnings.filterwarnings("ignore")
 
 # set LaTeX font for our figures
 # plt.rcParams.update({"text.usetex": True})
@@ -236,16 +238,58 @@ def plot_disk_model(disk_params, axes=[], save=False, location=''):
         fig.savefig(path + 'disk_model.png', dpi=400, bbox_inches='tight')
 
 
+def plot_many_models():
+    ''' Used to plot a range of disk models for display in the paper. Saves the images to the "Images" folder.
+    '''
+    # set LaTeX font for our figures
+    plt.rcParams.update({"text.usetex": True})
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['mathtext.fontset'] = 'cm'
+    fig, axes = plt.subplots(nrows=6, sharex=True, figsize=(5, 10), gridspec_kw={'hspace':0})
+    masses = [1e6, 1e7, 1e8]
+    fracs = [0.1, 0.5, 1]
+    # alphas = [0.01, 0.1]
+    alphas = [0.01]
+    
+    colours = ['tab:orange', 'tab:red', 'tab:purple']
+    ls = ['-', '--', ':']
+    lw = [1, 0.5]
+    for i, M in enumerate(masses):
+        for j, f_edd in enumerate(fracs):
+            for k, alpha in enumerate(alphas):
+                log_radii, t_eff, temps, tau, kappa, Sigma, cs, rho, h, Q, beta, prad, pgas = disk_model(M, f_edd, alpha, 0)
+                
+                axes[0].plot(log_radii, 10**temps, color=colours[i], ls=ls[j], lw=lw[k], rasterized=True)
+                axes[1].plot(log_radii, 10**Sigma, color=colours[i], ls=ls[j], lw=lw[k], rasterized=True)
+                axes[2].plot(log_radii, 10**h, color=colours[i], ls=ls[j], lw=lw[k], rasterized=True)
+                axes[3].plot(log_radii, 10**kappa, color=colours[i], ls=ls[j], lw=lw[k], rasterized=True)
+                axes[4].plot(log_radii, 10**tau, color=colours[i], ls=ls[j], lw=lw[k], rasterized=True)
+                axes[5].plot(log_radii, 10**Q, color=colours[i], ls=ls[j], lw=lw[k], rasterized=True)
+    
+    axes[0].set(ylabel='$T_{\mathrm{mid}}$ (K)')
+    axes[1].set(ylabel='$\Sigma$ (g/cm$^2$)')
+    axes[2].set(ylabel='$h$ ($H$/$r$)')
+    axes[3].set(ylabel='$\kappa$ (cm$^2$/g)')
+    axes[4].set(ylabel=r'$\tau$')
+    axes[5].set(ylabel='Toomre, $Q$', xlabel='$r$/$R_s$')
+    for i, ax in enumerate(axes):
+        ax.set(xscale='log', yscale='log')
+        
+    from matplotlib.lines import Line2D
+    custom_lines1 = [Line2D([0], [0], color=colours[0]),
+                    Line2D([0], [0], color=colours[1]),
+                    Line2D([0], [0], color=colours[2])]
+    custom_lines2 = [Line2D([0], [0], color='k', ls=ls[0]),
+                    Line2D([0], [0], color='k', ls=ls[1]),
+                    Line2D([0], [0], color='k', ls=ls[2])]
+    axes[0].legend(custom_lines1, ['$M=10^6 M_\odot$', '$M=10^7 M_\odot$', '$M=10^8 M_\odot$'])
+    axes[-1].legend(custom_lines2, ['$f_{\mathrm{edd}} = 0.1$','$f_{\mathrm{edd}} = 0.5$', '$f_{\mathrm{edd}} = 1$'])
+    
+    fig.savefig("Images/SGDiskModels.png", dpi=400, bbox_inches='tight')
+    fig.savefig("Images/SGDiskModels.pdf", dpi=400, bbox_inches='tight')
 
 
-
-
-
-
-
-
-
-
+# plot_many_models()
 
 
 

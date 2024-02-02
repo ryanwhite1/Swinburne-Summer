@@ -413,6 +413,20 @@ void output_data(struct reb_simulation* r, char* filename){
     }
     fclose(out_file);
 }
+void output_position_data(struct reb_simulation* r, char* filename){
+    FILE *out_file = fopen(filename, "a");
+    struct reb_particle* const particles = r->particles;
+    struct reb_particle com = particles[0];
+    const int N = r->N;
+    for (int i = 1; i < N; i++){
+        struct reb_particle* p = &(particles[i]); // get the particle
+        const double dx = p->x-com.x;
+        const double dy = p->y-com.y;
+        const double dz = p->z-com.z;
+        fprintf(out_file, "%.8e\t%d\t%.8e\t%.8e\t%.8e\t%.8e\n", r->t, p->hash, p->m, dx, dy, dz);
+    }
+    fclose(out_file);
+}
 
 
 void heartbeat(struct reb_simulation* r){
@@ -424,6 +438,9 @@ void heartbeat(struct reb_simulation* r){
         reb_simulation_synchronize(r);
         // reb_simulation_output_orbits(r, "orbits.txt");
         output_data(r, orbits_filename);
+        if (r->t < 40000){
+            output_position_data(r, positions_filename);
+        }
         reb_simulation_move_to_com(r); 
     }
     if (ADD_BH_RAND_TIME == 0){
@@ -436,6 +453,7 @@ void heartbeat(struct reb_simulation* r){
             NEXT_ADD_TIME += exponential_rv(r, ADD_BH_INTERVAL);
         }
     }
+    
 }
 
 void disk_forces(struct reb_simulation* r){
