@@ -38,7 +38,6 @@ int ADD_BH_RAND_TIME        = 0.;           // 0 for adding BHs at regular inter
 double ADD_BH_INTERVAL      = 1e5;          // if ADD_BH_RAND_TIME==0, this is the interval for adding. if ==1, this is the mean of the distribution
 double NEXT_ADD_TIME        = 0.;           // variable to say when to add the next BH (used when randomly choosing the interval)
 int BH_SPINS                = 0;            // 1 if simulating BH spins from NR fits, 0 if BHs are non-spinning
-double RETRO_PROB           = 0.2;          // probability of a black hole being initialised on a retrograde orbit
 
 // now define our data for our disk parameter splines. start by initialising some needed arrays and constants
 double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
@@ -350,20 +349,11 @@ void add_BH(struct reb_simulation* r, double distance){
     p.x = R * cos(theta); // x
     p.y = R * sin(theta); // y
     p.z = 0.1 * R * reb_random_uniform(r, -1., 1.); // z
-    double des_vel = sqrt(1./R);
+    double des_vel = 1. / sqrt(R);
     double angle = atan2(p.y, p.x); // arctan2(y, x)
-    double xprop, yprop;
-    double retrograde_check = reb_random_uniform(r, 0., 1.);
-    if (retrograde_check <= RETRO_PROB){        // retrograde orbiter
-        xprop = sin(angle);
-        yprop = -cos(angle);
-    } else {                                    // prograde orbiter
-        xprop = -sin(angle);
-        yprop = cos(angle);
-    }
+    double xprop = -sin(angle) * des_vel;
+    double yprop = cos(angle) * des_vel;
     double zprop = 0.;
-    double mult = des_vel * sqrt(1. / (xprop*xprop + yprop*yprop + zprop*zprop));
-    xprop *= mult; yprop *= mult; zprop *= mult;
     p.vx = xprop; 
     p.vy = yprop; 
     p.vz = zprop;
@@ -464,11 +454,11 @@ void heartbeat(struct reb_simulation* r){
 
 void disk_forces(struct reb_simulation* r){
     const double G = r->G;
-    const int N = r->N;
+    int N = r->N;
     struct reb_particle* const particles = r->particles;
     struct reb_particle com = particles[0]; // calculate migration forces with respect to center of mass;
 
-    for (int i=1; i<N; i++){
+    for (int i = 1; i < N; i++){
         struct reb_particle* p = &(particles[i]); // get the particle
         // first calculate the radius of the particle
         const double dx = p->x-com.x;
@@ -492,112 +482,114 @@ void disk_forces(struct reb_simulation* r){
         double Gamma_0 = (q/asp_ratio)*(q/asp_ratio) * Sigma * radius*radius*radius*radius * angvel*angvel;
         double Gamma = 0;
 
-        const double Lz = dx * dvy - dy * dvx;
-        double a, e;
-        if (Lz >= 0){       // BH is on prograde orbit
-            if (MIGRATION_PRESCRIPTION == 0){
-                double Theta = (c_v * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * pow(temp, 3));
-                double Gamma_iso = -0.85 - alpha - 0.9 * beta;
-                double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma_coeff) / gamma_coeff;
-                Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
-            }
-            else if (MIGRATION_PRESCRIPTION == 1){
-                double R_mu = 8.3145 / (2.016 / 1000.) * massscale;     // ideal gass constant over the mean molecular weight of H2, nondimensionalised
-                // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
-                double chi_chi_c = (16. * (gamma_coeff - 1.) * stefboltz * temp*temp*temp / (3. * density*density * R_mu * kappa)) / (radius*radius * asp_ratio*asp_ratio * angvel);
-                double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);
-                double Gamma_lindblad = - (2.34 - 0.1 * alpha + 1.5 * beta) * fx;
-                double Gamma_simp_corot = (0.46 - 0.96 * alpha + 1.8 * beta) / gamma_coeff;
-                Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
-            }
+        // below 2 lines were used when simulating retrograde orbiters (keeping for posterity). If Lz >= 0, BH on prograde orbit and retrograde otherwise
+        // const double Lz = dx * dvy - dy * dvx;
+        // double a, e;
 
-            double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
-            // add migration to the acceleration total
-            p->ax += -dy * Gamma_mag / radius;
-            p->ay += dx * Gamma_mag / radius;
-
-            //// now look at Evgeni's thermal torques
-            if (THERMAL_TORQUES == 1){
-                double visc = 1e-2;
-                double H = asp_ratio * radius;
-                
-                double dHdr = radius / H * (disk_aspratio_deriv(logr)); // r/H * (dln(h)/dlnr)
-                double dSigmadr = radius / Sigma * -alpha;
-                double drhodr = (H * dSigmadr - Sigma * dHdr) / (H*H);
-                double cs = angvel * H;
-                double dangveldr = -1.5 * angvel / radius;
-                double dcsdr = dangveldr * H + angvel * dHdr; 
-                double dPdr = -cs * (2 * density * dcsdr + cs * drhodr);
-                double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H*H * angvel;
-                double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
-                double L = 0, Lc = 1;      // set our bodies luminosity value to 0 so that it has no effect
-                if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
-                    L = ACCRETION * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;     // some proportion (given by ACCRETION) of the eddington luminosity
-                    Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
-                }
-                double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
-                double Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
-                p->ax += -dy * Gamma_thermal / (mass * radius*radius);
-                p->ay += dx * Gamma_thermal / (mass * radius*radius);
-            }
-            
-            // now lets add in eccentricity/inclination damping
-            double mu = G*(com.m + mass);
-            double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
-            a = -mu / (vel*vel - 2. * mu / radius);            // semi major axis
-            double tdamp = asp_ratio*asp_ratio*asp_ratio*asp_ratio * com.m*com.m / (mass * Sigma * a*a * angvel);
-            
-            double ex = 1. / mu * ((vel*vel - mu / radius) * dx - vr * dvx);
-            double ey = 1. / mu * ((vel*vel - mu / radius) * dy - vr * dvy);
-            double ez = 1. / mu * ((vel*vel - mu / radius) * dz - vr * dvz);
-            e = sqrt(ex*ex + ey*ey + ez*ez);
-            double eps = e / asp_ratio;
-
-            // angular momentum vectors are the cross product of position and velocity
-            const double Lx = dy * dvz - dz * dvy;
-            const double Ly = dz * dvx - dx * dvz;
-            const double Lz = dx * dvy - dy * dvx;
-            double incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) / M_PI;
-            double l = incl / asp_ratio;
-            double t_i = (tdamp / 0.544) * (1. - 0.3 * l*l + 0.24 * l*l*l + 0.14 * l * eps*eps);
-            double t_e = (tdamp / 0.78) * (1. - 0.14*eps*eps + 0.06*eps*eps*eps + 0.18*eps*l*l);
-
-            // printf("\n%f\n", t_i);
-            // add the damping forces to the migration acceleration
-            p->ax += -2. * vr * dx / (t_e * radius*radius); // eccentricity damping
-            p->ay += -2. * vr * dy / (t_e * radius*radius); // eccentricity damping
-            p->az += -2. * vr * dz / (t_e * radius*radius) - dvz / t_i; // eccentricity and inclination damping
-        } else {        // BH is on retrograde orbit
-            double disc_vel = 1. / sqrt(radius);
-            double angle = atan2(dy, dx); // arctan2(y, x)
-            double disc_vel_x = -sin(angle) * disc_vel;
-            double disc_vel_y = cos(angle) * disc_vel;
-            double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
-            double vel_rel = vel + disc_vel;
-            double Lambda = asp_ratio * radius * vel_rel*vel_rel / (G * mass);
-            double drag_force = - 4. * M_PI * log(Lambda) * G*G*mass * density / (vel_rel*vel_rel*vel_rel);
-            p->ax += drag_force * (dvx - disc_vel_x);
-            p->ay += drag_force * (dvy - disc_vel_y);
-            p->az += drag_force * dvz;
-
-            double mu = G*(com.m + mass);
-            double ex = 1. / mu * ((vel*vel - mu / radius) * dx - vr * dvx);
-            double ey = 1. / mu * ((vel*vel - mu / radius) * dy - vr * dvy);
-            double ez = 1. / mu * ((vel*vel - mu / radius) * dz - vr * dvz);
-            e = sqrt(ex*ex + ey*ey + ez*ez);
-
-            a = -mu / (vel*vel - 2. * mu / radius);
+        if (MIGRATION_PRESCRIPTION == 0){
+            double Theta = (c_v * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * pow(temp, 3));
+            double Gamma_iso = -0.85 - alpha - 0.9 * beta;
+            double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma_coeff) / gamma_coeff;
+            Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
+        }
+        else if (MIGRATION_PRESCRIPTION == 1){
+            double R_mu = 8.3145 / (2.016 / 1000.) * massscale;     // ideal gass constant over the mean molecular weight of H2, nondimensionalised
+            // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
+            double chi_chi_c = (16. * (gamma_coeff - 1.) * stefboltz * temp*temp*temp / (3. * density*density * R_mu * kappa)) / (radius*radius * asp_ratio*asp_ratio * angvel);
+            double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);
+            double Gamma_lindblad = - (2.34 - 0.1 * alpha + 1.5 * beta) * fx;
+            double Gamma_simp_corot = (0.46 - 0.96 * alpha + 1.8 * beta) / gamma_coeff;
+            Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
         }
 
+        double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
+        // add migration to the acceleration total
+        p->ax += -dy * Gamma_mag / radius;
+        p->ay += dx * Gamma_mag / radius;
+
+        //// now look at Evgeni's thermal torques
+        if (THERMAL_TORQUES == 1){
+            double visc = 1e-2;
+            double H = asp_ratio * radius;
+            
+            double dHdr = radius / H * (disk_aspratio_deriv(logr)); // r/H * (dln(h)/dlnr)
+            double dSigmadr = radius / Sigma * -alpha;
+            double drhodr = (H * dSigmadr - Sigma * dHdr) / (H*H);
+            double cs = angvel * H;
+            double dangveldr = -1.5 * angvel / radius;
+            double dcsdr = dangveldr * H + angvel * dHdr; 
+            double dPdr = -cs * (2 * density * dcsdr + cs * drhodr);
+            double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H*H * angvel;
+            double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
+            double L = 0, Lc = 1;      // set our bodies luminosity value to 0 so that it has no effect
+            if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
+                L = ACCRETION * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;     // some proportion (given by ACCRETION) of the eddington luminosity
+                Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
+            }
+            double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
+            double Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
+            p->ax += -dy * Gamma_thermal / (mass * radius*radius);
+            p->ay += dx * Gamma_thermal / (mass * radius*radius);
+        }
         
+        // now lets add in eccentricity/inclination damping
+        double mu = G*(com.m + mass);
+        double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
+        double a = -mu / (vel*vel - 2. * mu / radius);            // semi major axis
+        double tdamp = asp_ratio*asp_ratio*asp_ratio*asp_ratio * com.m*com.m / (mass * Sigma * a*a * angvel);
+        
+        double ex = 1. / mu * ((vel*vel - mu / radius) * dx - vr * dvx);
+        double ey = 1. / mu * ((vel*vel - mu / radius) * dy - vr * dvy);
+        double ez = 1. / mu * ((vel*vel - mu / radius) * dz - vr * dvz);
+        double e = sqrt(ex*ex + ey*ey + ez*ez);
+        double eps = e / asp_ratio;
+
+        // angular momentum vectors are the cross product of position and velocity
+        const double Lx = dy * dvz - dz * dvy;
+        const double Ly = dz * dvx - dx * dvz;
+        const double Lz = dx * dvy - dy * dvx;
+        double incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) / M_PI;
+        double l = incl / asp_ratio;
+        double t_i = (tdamp / 0.544) * (1. - 0.3 * l*l + 0.24 * l*l*l + 0.14 * l * eps*eps);
+        double t_e = (tdamp / 0.78) * (1. - 0.14*eps*eps + 0.06*eps*eps*eps + 0.18*eps*l*l);
+
+        // printf("\n%f\n", t_i);
+        // add the damping forces to the migration acceleration
+        p->ax += -2. * vr * dx / (t_e * radius*radius); // eccentricity damping
+        p->ay += -2. * vr * dy / (t_e * radius*radius); // eccentricity damping
+        p->az += -2. * vr * dz / (t_e * radius*radius) - dvz / t_i; // eccentricity and inclination damping
+
+        // below several lines used when simulating retrograde orbiters (keeping for posterity)
+        // double disc_vel = 1. / sqrt(radius);
+        // double angle = atan2(dy, dx); // arctan2(y, x)
+        // double disc_vel_x = -sin(angle) * disc_vel;
+        // double disc_vel_y = cos(angle) * disc_vel;
+        // double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
+        // double vel_rel = vel + disc_vel;
+        // double Lambda = asp_ratio * radius * vel_rel*vel_rel / (G * mass);
+        // double drag_force = - 4. * M_PI * log(Lambda) * G*G*mass * density / (vel_rel*vel_rel*vel_rel);
+        // p->ax += drag_force * (dvx - disc_vel_x);
+        // p->ay += drag_force * (dvy - disc_vel_y);
+        // p->az += drag_force * dvz;
+
+        // double mu = G*(com.m + mass);
+        // double ex = 1. / mu * ((vel*vel - mu / radius) * dx - vr * dvx);
+        // double ey = 1. / mu * ((vel*vel - mu / radius) * dy - vr * dvy);
+        // double ez = 1. / mu * ((vel*vel - mu / radius) * dz - vr * dvz);
+        // e = sqrt(ex*ex + ey*ey + ez*ez);
+
+        // a = -mu / (vel*vel - 2. * mu / radius);
 
         if (a*(1. - e) < r_isco){     // particle merged with SMBH
             printf("\nParticle merged with SMBH");
             com.m += mass;
             reb_simulation_remove_particle_by_hash(r, p->hash, 1);
+            i = i - 1; N = N - 1;
         } else if (e > 0.99){
-            printf("\nParticle ejected!");
+            printf("\nParticle ejected!, %.4e, %.4e", e, mass);
             reb_simulation_remove_particle_by_hash(r, p->hash, 1);
+            i -= 1; N -= 1;
+            reb_simulation_synchronize(r);
         }
     }
 }
