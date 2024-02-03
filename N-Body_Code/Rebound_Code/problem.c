@@ -1,17 +1,3 @@
-/**
- * Planetary migration in the GJ876 system
- *
- * This example applies dissipative forces to two
- * bodies orbiting a central object. The forces are specified
- * in terms of damping timescales for the semi-major axis and
- * eccentricity. This mimics planetary migration in a protostellar disc. 
- * The example reproduces the study of Lee & Peale (2002) on the 
- * formation of the planetary system GJ876. For a comparison, 
- * see figure 4 in their paper. The IAS15 or WHFAST integrators
- * can be used. Note that the forces are velocity dependent.
- * Special thanks goes to Willy Kley for helping me to implement
- * the damping terms as actual forces. 
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -244,7 +230,7 @@ void check_mergers(struct reb_simulation* r){
                         double cos_beta = usx1*unit_Lx + usy1*unit_Ly + usz1*unit_Lz;
                         double cos_gamma = usx2*unit_Lx + usy2*unit_Ly + usz2*unit_Lz;
                         double term1 = -0.129 / ((1. + q*q)*(1. + q*q)) * (aa1*aa1 + aa2*aa2*q*q*q*q + 2.*aa1*aa2*q*q*cos_alpha);
-                        double term2 = (-0.384 * nu - 2.686 + 2)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
+                        double term2 = (-0.384 * nu - 2.686 + 2.)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
                         double term3 = 3.464 - 3.454*nu + 2.353*nu*nu;
                         double l_mag = term1 + term2 + term3;
                         if (m1 > m2){
@@ -460,6 +446,7 @@ void disk_forces(struct reb_simulation* r){
 
     for (int i = 1; i < N; i++){
         struct reb_particle* p = &(particles[i]); // get the particle
+        int p_hash = p->hash;
         // first calculate the radius of the particle
         const double dx = p->x-com.x;
         const double dy = p->y-com.y;
@@ -521,13 +508,13 @@ void disk_forces(struct reb_simulation* r){
             double dPdr = -cs * (2 * density * dcsdr + cs * drhodr);
             double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H*H * angvel;
             double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
-            double L = 0, Lc = 1;      // set our bodies luminosity value to 0 so that it has no effect
+            double L = 0., Lc = 1.;      // set our bodies luminosity value to 0 so that it has no effect
             if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
                 L = ACCRETION * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;     // some proportion (given by ACCRETION) of the eddington luminosity
                 Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
             }
             double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
-            double Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
+            double Gamma_thermal = 1.61 * (gamma_coeff - 1.) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
             p->ax += -dy * Gamma_thermal / (mass * radius*radius);
             p->ay += dx * Gamma_thermal / (mass * radius*radius);
         }
@@ -581,14 +568,16 @@ void disk_forces(struct reb_simulation* r){
         // a = -mu / (vel*vel - 2. * mu / radius);
 
         if (a*(1. - e) < r_isco){     // particle merged with SMBH
-            printf("\nParticle merged with SMBH");
+            printf("\nParticle merged with SMBH\n");
             com.m += mass;
-            reb_simulation_remove_particle_by_hash(r, p->hash, 1);
-            i = i - 1; N = N - 1;
-        } else if (e > 0.99){
-            printf("\nParticle ejected!, %.4e, %.4e", e, mass);
-            reb_simulation_remove_particle_by_hash(r, p->hash, 1);
-            i -= 1; N -= 1;
+            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+            continue;
+        } 
+        if (e > 0.8){
+            printf("\nParticle ejected!, %.4e, %.4e, %d\n", e, mass, i);
+            e = 0;
+            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+            break; 
             reb_simulation_synchronize(r);
         }
     }
