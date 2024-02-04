@@ -311,12 +311,12 @@ def plot_torques():
 
     fig, ax = plt.subplots()
 
-    accretion = 1
-    masses = [1e6, 1e7, 1e8]
+    accretion = 0.1
+    masses = [1e6, 1e7, 1e8, 1e9]
     fracs = [0.1]
     # alphas = [0.01, 0.1]
     alphas = [0.01]
-    colours = ['tab:orange', 'tab:red', 'tab:purple']
+    colours = ['tab:orange', 'tab:red', 'tab:purple', 'tab:blue']
     ls = ['-', '--', ':']
     lw = [1, 0.5]
     
@@ -338,7 +338,7 @@ def plot_torques():
                 spl_kappa = interp.CubicSpline(np.log10(log_radii), kappa, extrapolate=True)
                 spl_tau = interp.CubicSpline(np.log10(log_radii), tau, extrapolate=True)
                 spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True)
-                # spl_P = interp.CubicSpline(np.log10(log_radii), prad+pgas, extrapolate=True)
+                # spl_P = interp.CubicSpline(np.log10(log_radii), pgas, extrapolate=True)
                 spl_cs = interp.CubicSpline(np.log10(log_radii), cs, extrapolate=True)
 
                 def alpha(r): return -spl_sigma.derivative()(np.log10(r))
@@ -352,7 +352,7 @@ def plot_torques():
                     logr = np.log10(r)
                     Gamma_0 = ((10/M) / 10**spl_h(logr))**2 * 10**spl_sigma(logr) * (r*rs)**4 * angvel(r*rs, M)**2
                     
-                    # ### Migration from pardekooper
+                    ### Migration from pardekooper
                     # c_v = 14304 / 1000
                     # tau_eff = 3 * 10**spl_tau(logr) / 8 + np.sqrt(3)/4 + 0.25 / 10**spl_tau(logr)
                     # Theta = (c_v * 10**spl_sigma(logr) * angvel(r*rs, M) * tau_eff) / (12. * np.pi * stef_boltz * 10**(3 * spl_temp(logr)));
@@ -362,26 +362,27 @@ def plot_torques():
                     # Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
                     
                     ### Migration from Jimenez
-                    # chi_chi_c = (16. * (gamma_coeff - 1.) * stef_boltz * 10**(3 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * R_mu * 10**spl_kappa(logr))) / ((r*rs)**2 * 10**(2*spl_h(logr)) * angvel(r*rs, M));
-                    # chi_chi_c = 9 * gamma_coeff * (gamma_coeff - 1) * visc / 2
-                    
                     H = 10**spl_h(logr) * r*rs
                     chi = 16. * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
                     chi_chi_c = chi / (H**2 * angvel(r*rs, M))
-                    
                     fx = (np.sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (np.sqrt(chi_chi_c / 2.) + 1.);
                     Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
                     Gamma_simp_corot = (0.46 - 0.96 * alpha(r) + 1.8 * beta(r)) / gamma_coeff;
                     Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
 
                     ### Thermal torques
-                    H = 10**spl_h(logr) * r*rs
                     dPdr = P_deriv(r)
-                    # chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H**2 * angvel(r*rs, M);
-                    # chi = 16. * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
                     x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
-                    # L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs; 
-                    L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)
+                    # L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
+                    L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)       # accretion assuming the AGN disk composition
+                    # below are equations 17-23 from gilbaum 2022
+                    R_BHL = 2 * G_cgs * bh_mass / (H * angvel(r*rs, M))**2
+                    R_H = r*rs * np.cbrt(10 / (3 * M))
+                    b_H = np.sqrt(R_BHL * R_H)
+                    mdot_RBHL = np.pi * min(R_BHL, b_H) * min(R_BHL, b_H, H) * (H * angvel(r*rs, M))
+                    L_RBHL = 0.1 * c_cgs**2 * mdot_RBHL
+                    L = min(L_RBHL, L / accretion)
+                    
                     Lc = 4. * np.pi * G_cgs * bh_mass * 10**spl_dens(logr) * chi / gamma_coeff
                     lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
                     Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
