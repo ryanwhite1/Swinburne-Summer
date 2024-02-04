@@ -304,6 +304,12 @@ def plot_many_models():
 
 
 def plot_torques():
+    '''
+    Open problems:
+        1. Not sure whether to model based on total pressure or just gas pressure. Evgeni modelled by gas pressure, and this
+            means that there are some migration traps in the inner disk; these migration traps disappear when modelling via total pressure
+        2. Need to plot regions of parameter space that contain at least one migration trap (and at what radius!)
+    '''
     import scipy.interpolate as interp
     plt.rcParams.update({"text.usetex": True})
     plt.rcParams['font.family'] = 'serif'
@@ -337,8 +343,8 @@ def plot_torques():
                 spl_h = interp.CubicSpline(np.log10(log_radii), h, extrapolate=True)
                 spl_kappa = interp.CubicSpline(np.log10(log_radii), kappa, extrapolate=True)
                 spl_tau = interp.CubicSpline(np.log10(log_radii), tau, extrapolate=True)
-                spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True)
-                # spl_P = interp.CubicSpline(np.log10(log_radii), pgas, extrapolate=True)
+                # spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True) # total pressure
+                spl_P = interp.CubicSpline(np.log10(log_radii), pgas, extrapolate=True)     # radiation pressure
                 spl_cs = interp.CubicSpline(np.log10(log_radii), cs, extrapolate=True)
 
                 def alpha(r): return -spl_sigma.derivative()(np.log10(r))
