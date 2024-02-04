@@ -8,36 +8,33 @@
 #include "spline.h"
 
 // initialise variables and simulation feature variables
-double tmax, agnmass, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, r_isco, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
+double tmax, agnmass, alpha, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, r_isco, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
 const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.;
-char output_folder[200] = "./OUTPUT_", orbits_filename[200], positions_filename[200], mergers_filename[200], r_filename[200], sigma_filename[200], temp_filename[200], aratio_filename[200], opacity_filename[200];
-const double spin_mult      = 1e10;         // I'm storing the BH spins in the particle radius parameter (cursed, I know), so divide it by this huge multiplier so that the radius of the particle doesn't actually have any effect (e.g. with collisions)
+char output_folder[200] = "./OUTPUT_", orbits_filename[200], positions_filename[200], mergers_filename[200], r_filename[200], sigma_filename[200], temp_filename[200], aratio_filename[200], opacity_filename[200], pressure_filename[200];
 int num_BH                  = 0;            // integer value to track how many seed BHs we've had in total so far
 int MIGRATION_PRESCRIPTION  = 0;            // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
 int THERMAL_TORQUES         = 0;            // set to 1 to include thermal torques from Grishin et al (2023)
 int RAND_BH_MASSES          = 0;            // 0 for 10 solar mass seed BHs, 1 for randomly sampled masses
 int MERGER_KICKS            = 0;            // 0 for no kicks in mergers, 1 for kicks in random direction
 int MERGER_CRITERION        = 0;            // 0 for binding_energy < KE, 1 for criterion in Li et al
-double MUTUAL_HILL_PROP     = 1.;           // proportion of mutual hill radius to consider a merger
+double MUTUAL_HILL_PROP     = 1.;           // proportion of mutual hill radius to consider a merger. not relevant if using Li et al merger criteria
 double ACCRETION            = 0.;           // 0 for no accretion, any other number to simulate accretion at that *proportion* of the eddington limit
-int ADD_BH_RAND_TIME        = 0.;           // 0 for adding BHs at regular intervals, 1 for adding them at exponential randomly distributed times
+int ADD_BH_RAND_TIME        = 0;            // 0 for adding BHs at regular intervals, 1 for adding them at exponential randomly distributed times, -1 to not add any
 double ADD_BH_INTERVAL      = 1e5;          // if ADD_BH_RAND_TIME==0, this is the interval for adding. if ==1, this is the mean of the distribution
 double NEXT_ADD_TIME        = 0.;           // variable to say when to add the next BH (used when randomly choosing the interval)
 int BH_SPINS                = 0;            // 1 if simulating BH spins from NR fits, 0 if BHs are non-spinning
 
 // now define our data for our disk parameter splines. start by initialising some needed arrays and constants
-double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, asp_deriv_coeffs[] = {0, 0, 0};
+double temp_deriv_coeffs[3] = {0, 0, 0}, sigma_deriv_coeffs[] = {0, 0, 0}, pressure_deriv_coeffs[] = {0, 0, 0};
 const int n_spline_data = 100;
-// disk surface density spline data
-double log_sigma_spline[100];
-// disk temperature spline data
-double log_temp_spline[100];
-// disk aspect ratio spline data
-double log_aratio_spline[100];
-// disk opacity spline data
-double log_opacity_spline[100];
 
-double log_radii_data[100], log_sigma_data[100], log_temps_data[100], log_aratio_data[100], log_opacity_data[100];
+double log_sigma_spline[100];   // disk surface density spline data
+double log_temp_spline[100];    // disk temperature spline data
+double log_aratio_spline[100];  // disk aspect ratio spline data
+double log_opacity_spline[100]; // disk opacity spline data
+double log_pressure_spline[100];// disk total pressure spline data
+double log_cs_spline[100];      // disk sound speed spline data
+double log_radii_data[100], log_sigma_data[100], log_temps_data[100], log_aratio_data[100], log_opacity_data[100], log_pressure_data[100], log_cs_data[100];
 
 
 double uniform(double lower, double upper){
@@ -66,11 +63,13 @@ void create_filenames(int mass, double f_edd, double alpha){
     strcpy(temp_filename, output_folder); strcat(temp_filename, "temps_");
     strcpy(aratio_filename, output_folder); strcat(aratio_filename, "h_");
     strcpy(opacity_filename, output_folder); strcat(opacity_filename, "kappa_");
+    strcpy(pressure_filename, output_folder); strcat(pressure_filename, "pressure_");
     strcat(r_filename, file_name_format); strcat(r_filename, ".csv");
     strcat(sigma_filename, file_name_format); strcat(sigma_filename, ".csv");
     strcat(temp_filename, file_name_format); strcat(temp_filename, ".csv");
     strcat(aratio_filename, file_name_format); strcat(aratio_filename, ".csv");
     strcat(opacity_filename, file_name_format); strcat(opacity_filename, ".csv");
+    strcat(pressure_filename, file_name_format); strcat(pressure_filename, ".csv");
 }
 void populate_spline_arrays(){
     FILE *log_r_file = fopen(r_filename, "r"); // x data, units of log10 schwarzschild radii
@@ -78,14 +77,16 @@ void populate_spline_arrays(){
     FILE *temp_file = fopen(temp_filename, "r");  // y data, cgs units on a log10 scale
     FILE *aratio_file = fopen(aratio_filename, "r");  // y data, cgs units on a log10 scale
     FILE *opacity_file = fopen(opacity_filename, "r"); // y data, cgs units on a log10 scale
+    FILE *pressure_file = fopen(pressure_filename, "r"); // y data, cgs units on a log10 scale
     for (int i = 0; i < n_spline_data; i++){
         if (fscanf(log_r_file, "%le", &log_radii_data[i]));
         if (fscanf(sigma_file, "%le", &log_sigma_data[i]));
         if (fscanf(temp_file, "%le", &log_temps_data[i]));
         if (fscanf(aratio_file, "%le", &log_aratio_data[i]));
         if (fscanf(opacity_file, "%le", &log_opacity_data[i]));
+        if (fscanf(pressure_file, "%le", &log_pressure_data[i]));
     }
-    fclose(log_r_file); fclose(sigma_file); fclose(temp_file); fclose(aratio_file); fclose(opacity_file); 
+    fclose(log_r_file); fclose(sigma_file); fclose(temp_file); fclose(aratio_file); fclose(opacity_file); fclose(pressure_file); 
 }
 void eval_splines(){
     // this evaluates the splines at run time (since we can't evaluate them at compile time).
@@ -93,6 +94,7 @@ void eval_splines(){
     spline(log_radii_data, log_temps_data, n_spline_data, log_temp_spline);
     spline(log_radii_data, log_aratio_data, n_spline_data, log_aratio_spline);
     spline(log_radii_data, log_opacity_data, n_spline_data, log_opacity_spline);
+    spline(log_radii_data, log_pressure_data, n_spline_data, log_pressure_spline);
 }
 double disk_surfdens(double logr){
     double sigma = pow(10., splint(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr) + 1.); // +1 in power to go from cgs to SI
@@ -124,6 +126,10 @@ double disk_temp_deriv(double logr){
 double disk_aspratio_deriv(double logr){
     return splderiv(log_radii_data, log_aratio_data, log_aratio_spline, n_spline_data, logr);
 }
+double disk_pressure_deriv(double logr){
+    return splderiv(log_radii_data, log_pressure_data, log_pressure_spline, n_spline_data, logr);
+}
+
 
 double lognormal_mass(struct reb_simulation* r){
     // box-muller transform for normally distributed random numbers     https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
@@ -427,11 +433,11 @@ void heartbeat(struct reb_simulation* r){
     }
     if (ADD_BH_RAND_TIME == 0){
         if (reb_simulation_output_check(r, ADD_BH_INTERVAL) && r->t > 0.5){
-            add_BH(r, 2.);
+            add_BH(r, 4.);
         }
     } else if (ADD_BH_RAND_TIME == 1){  // add BHs with exponential distribution
         if (r->t > NEXT_ADD_TIME){
-            add_BH(r, 2.);
+            add_BH(r, 4.);
             NEXT_ADD_TIME += exponential_rv(r, ADD_BH_INTERVAL);
         }
     }
@@ -461,11 +467,12 @@ void disk_forces(struct reb_simulation* r){
         // now define constants and calculate disk properties at this radius
         double logr = log10(radius / nondim_rs), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
         double kappa = disk_opacity(logr), temp = disk_temp(logr);
-        double density = Sigma / (asp_ratio * radius);  // sigma / H
+        double H = asp_ratio * radius;
+        double density = Sigma / H; 
 
         double tau = kappa * Sigma / 2, tau_eff = 3 * tau / 8 + sqrt(3) / 4 + 1. / (4 * tau);    // define optical depth params
         // start with the Type I migration as in Pardekooper (?)
-        double alpha = -disk_sigma_deriv(logr), beta = -disk_temp_deriv(logr), xi = beta - (gamma_coeff - 1) * alpha; // define disk gradient properties
+        double nabla_sig = -disk_sigma_deriv(logr), nabla_T = -disk_temp_deriv(logr), xi = nabla_T - (gamma_coeff - 1) * nabla_sig; // define disk gradient properties
         double Gamma_0 = (q/asp_ratio)*(q/asp_ratio) * Sigma * radius*radius*radius*radius * angvel*angvel;
         double Gamma = 0;
 
@@ -475,8 +482,8 @@ void disk_forces(struct reb_simulation* r){
 
         if (MIGRATION_PRESCRIPTION == 0){
             double Theta = (c_v * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * pow(temp, 3));
-            double Gamma_iso = -0.85 - alpha - 0.9 * beta;
-            double Gamma_ad = (-0.85 - alpha - 1.7 * beta + 7.9 * xi / gamma_coeff) / gamma_coeff;
+            double Gamma_iso = -0.85 - nabla_sig - 0.9 * nabla_T;
+            double Gamma_ad = (-0.85 - nabla_sig - 1.7 * nabla_T + 7.9 * xi / gamma_coeff) / gamma_coeff;
             Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
         }
         else if (MIGRATION_PRESCRIPTION == 1){
@@ -484,8 +491,8 @@ void disk_forces(struct reb_simulation* r){
             // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
             double chi_chi_c = (16. * (gamma_coeff - 1.) * stefboltz * temp*temp*temp / (3. * density*density * R_mu * kappa)) / (radius*radius * asp_ratio*asp_ratio * angvel);
             double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);
-            double Gamma_lindblad = - (2.34 - 0.1 * alpha + 1.5 * beta) * fx;
-            double Gamma_simp_corot = (0.46 - 0.96 * alpha + 1.8 * beta) / gamma_coeff;
+            double Gamma_lindblad = - (2.34 - 0.1 * nabla_sig + 1.5 * nabla_T) * fx;
+            double Gamma_simp_corot = (0.46 - 0.96 * nabla_sig + 1.8 * nabla_T) / gamma_coeff;
             Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
         }
 
@@ -496,17 +503,8 @@ void disk_forces(struct reb_simulation* r){
 
         //// now look at Evgeni's thermal torques
         if (THERMAL_TORQUES == 1){
-            double visc = 1e-2;
-            double H = asp_ratio * radius;
-            
-            double dHdr = radius / H * (disk_aspratio_deriv(logr)); // r/H * (dln(h)/dlnr)
-            double dSigmadr = radius / Sigma * -alpha;
-            double drhodr = (H * dSigmadr - Sigma * dHdr) / (H*H);
-            double cs = angvel * H;
-            double dangveldr = -1.5 * angvel / radius;
-            double dcsdr = dangveldr * H + angvel * dHdr; 
-            double dPdr = -cs * (2 * density * dcsdr + cs * drhodr);
-            double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H*H * angvel;
+            double dPdr = disk_pressure_deriv(logr);
+            double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * alpha * H*H * angvel;
             double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
             double L = 0., Lc = 1.;      // set our bodies luminosity value to 0 so that it has no effect
             if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
@@ -518,11 +516,17 @@ void disk_forces(struct reb_simulation* r){
             p->ax += -dy * Gamma_thermal / (mass * radius*radius);
             p->ay += dx * Gamma_thermal / (mass * radius*radius);
         }
+
+        // now add GW inspiral torque from Peters 1964 and Grishin 2023
+        double cs = angvel * H;
+        double Gamma_GW = Gamma_0 * (-32./5. * pow(c_nbody/cs, 3.) * pow(asp_ratio, 6.)) * pow(nondim_rs / (2 * radius), 4.) / (Sigma * radius*radius);
+        p->ax += -dy * Gamma_GW / (mass * radius*radius);
+        p->ay += dx * Gamma_GW / (mass * radius*radius);
         
         // now lets add in eccentricity/inclination damping
         double mu = G*(com.m + mass);
         double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
-        double a = -mu / (vel*vel - 2. * mu / radius);            // semi major axis
+        double a = - mu / (vel*vel - 2. * mu / radius);            // semi major axis
         double tdamp = asp_ratio*asp_ratio*asp_ratio*asp_ratio * com.m*com.m / (mass * Sigma * a*a * angvel);
         
         double ex = 1. / mu * ((vel*vel - mu / radius) * dx - vr * dvx);
@@ -608,7 +612,7 @@ void init_conds(int N, int mass, struct reb_simulation* r){
     // uniformly (and randomly) distribute points in the unit disk
     for (int i = 1; i <= N; i++){   // start from i=1 because we want the SMBH to be at i=0
         double dist = reb_random_uniform(r, 0.5*0.5*0.5, 1.);
-        double R = 2. * pow(dist, 1./3.);
+        double R = 4. * pow(dist, 1./3.);
         add_BH(r, R);
     }
 
@@ -625,7 +629,7 @@ void init_conds(int N, int mass, struct reb_simulation* r){
 int main(int argc, char* argv[]){
     // srand(time(NULL));
     int mass;
-    double f_edd, alpha;
+    double f_edd;
     if (scanf("%d", &mass)); 
     if (scanf("%lf", &f_edd)); 
     if (scanf("%lf", &alpha));

@@ -232,7 +232,7 @@ def get_disc_torques(mm,m_stellar, m_dot,alpha, which_prefactor):
     chis = [ 16 * gamma * (gamma-1) * sb * t**4 / 3 / k/ rho**2 /cs**2 for (t,k,cs,rho, gamma) in zip(Ts, kappas,css, rhos, gammas)]  
     # get other relevant length scales
     lambdas = [(2 * chi / 3/gamma/cs*h)**0.5 for (chi,cs,h, gamma) in zip(chis, css, Hs, gammas)]
-    x_cs = [np.fabs(-P_g * h**2/gamma /r/rg) for (P_g,h,r, gamma) in zip(P_grad, Hs, rs, gammas)]
+    x_cs = [np.fabs(-P_g * h**2/gamma /r/rg/3) for (P_g,h,r, gamma) in zip(P_grad, Hs, rs, gammas)]
     r_Hills = [r*rg * (m_stellar/1e8/mm/3)**(1/3) for r in rs]
 
     # set the Type I migration torque depending on the prefactor law we choose

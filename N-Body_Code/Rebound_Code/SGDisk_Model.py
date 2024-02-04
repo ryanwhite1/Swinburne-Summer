@@ -202,15 +202,17 @@ def save_disk_model(disk_params, location='', name='', save_all=False):
     path = os.path.dirname(os.path.abspath(__file__)) + location
     if not os.path.isdir(path):
         os.mkdir(path)
-    param_names = ['log_radii', 't_eff', 'temps', 'tau', 'kappa', 'Sigma', 'cs', 'rho', 'h', 'Q', 'beta', 'prad', 'pgas']
+    param_names = ['log_radii', 't_eff', 'temps', 'tau', 'kappa', 'Sigma', 'cs', 'rho', 'h', 'Q', 'beta', 'prad', 'pgas', 'pressure']
     filenames = [path + param + '_' + name + '.csv' for param in param_names]
     if save_all:
         indices = np.arange(0, len(param_names))
     else:   # only saves parameter arrays for those relevant to migration in the nbody code
-        indices = [0, 2, 4, 5, 8]
+        indices = [0, 2, 4, 5, 8, 13]
     for index in indices:
         if index == 0:
             np.savetxt(filenames[index], np.log10(disk_params[index]), delimiter=',')
+        elif index == 13:
+            np.savetxt(filenames[index], np.log10(10**disk_params[11] + 10**disk_params[12]), delimiter=',')
         else:
             np.savetxt(filenames[index], disk_params[index], delimiter=',')
 
@@ -281,7 +283,7 @@ def plot_many_models():
     axes[2].set(ylabel='$h$ ($H$/$r$)')
     axes[3].set(ylabel='$\kappa$ (cm$^2$/g)')
     axes[4].set(ylabel=r'$\tau$')
-    axes[5].set(ylabel='Toomre, $Q$', xlabel='$r$/$R_s$')
+    axes[5].set(ylabel='Toomre, $Q$', xlabel='$R/R_s$')
     for i, ax in enumerate(axes):
         ax.set(xscale='log', yscale='log')
 
@@ -309,7 +311,7 @@ def plot_torques():
 
     fig, ax = plt.subplots()
 
-    accretion = 0.2
+    accretion = 0.1
     masses = [1e6, 1e7, 1e8]
     fracs = [0.5]
     # alphas = [0.01, 0.1]
@@ -318,7 +320,9 @@ def plot_torques():
     ls = ['-', '--', ':']
     lw = [1, 0.5]
     
-    R_mu = 8.3145 / 2.016
+    bh_mass = 10 * M_odot_cgs
+    # R_mu = 8.3145 / 2.016
+    R_mu = 8.3145 / (2.016 * m_H * 6.022e23 * 10)
     gamma_coeff = 5/3 
 
     for i, M in enumerate(masses):
@@ -333,10 +337,12 @@ def plot_torques():
                 spl_h = interp.CubicSpline(np.log10(log_radii), h, extrapolate=True)
                 spl_kappa = interp.CubicSpline(np.log10(log_radii), kappa, extrapolate=True)
                 spl_tau = interp.CubicSpline(np.log10(log_radii), tau, extrapolate=True)
+                spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True)
+                spl_cs = interp.CubicSpline(np.log10(log_radii), cs, extrapolate=True)
 
                 def alpha(r): return -spl_sigma.derivative()(np.log10(r))
                 def beta(r): return -spl_temp.derivative()(np.log10(r))
-                def h_deriv(r): return spl_h.derivative()(np.log10(r))
+                def P_deriv(r): return -spl_P.derivative()(np.log10(r))
                 
                 log_radii = np.logspace(1, 5, 1000)
                 torques = np.zeros(len(log_radii))
@@ -354,46 +360,50 @@ def plot_torques():
                     # Gamma_ad = (-0.85 - alpha(r) - 1.7 * beta(r) + 7.9 * xi / gamma_coeff) / gamma_coeff;
                     # Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
                     
-                    
                     ### Migration from Jimenez
                     chi_chi_c = (16. * (gamma_coeff - 1.) * stef_boltz * 10**(3 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * R_mu * 10**spl_kappa(logr))) / ((r*rs)**2 * 10**(2*spl_h(logr)) * angvel(r*rs, M));
+                    # chi_chi_c = 9 * gamma_coeff * (gamma_coeff - 1) * visc / 2
                     fx = (np.sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (np.sqrt(chi_chi_c / 2.) + 1.);
                     Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
                     Gamma_simp_corot = (0.46 - 0.96 * alpha(r) + 1.8 * beta(r)) / gamma_coeff;
                     Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
 
-                    
-                    
                     ### Thermal torques
                     H = 10**spl_h(logr) * r*rs
-                    dHdr = r*rs / H * h_deriv(r)
-                    dSigmadr = r*rs / 10**spl_sigma(logr) * -alpha(r);
-                    drhodr = (H * dSigmadr - 10**spl_sigma(logr) * dHdr) / H**2;
-                    cs = angvel(r*rs, M) * H;
-                    dangveldr = -1.5 * angvel(r*rs, M) / (r*rs);
-                    dcsdr = dangveldr * H + angvel(r*rs, M) * dHdr; 
-                    dPdr = -cs * (2 * 10**spl_dens(logr) * dcsdr + cs * drhodr);
-                    chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H**2 * angvel(r*rs, M);
-                    x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs);
-                    mass = 10 * M_odot_cgs
-                    L = accretion * 4. * np.pi * G_cgs * mass * m_H * c_cgs / thomson_cgs; 
-                    Lc = 4. * np.pi * G_cgs * mass * 10**spl_dens(logr) * chi / gamma_coeff;
-                    lambda_ = np.sqrt(2. * chi / (3. * gamma_coeff * angvel(r*rs, M)));
-                    Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
+                    dPdr = P_deriv(r)
+                    # chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * visc * H**2 * angvel(r*rs, M);
+                    chi = 16. * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
+                    x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
+                    L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs; 
+                    # L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)
+                    Lc = 4. * np.pi * G_cgs * bh_mass * 10**spl_dens(logr) * chi / gamma_coeff;
                     
-                    Gamma += Gamma_thermal
+                    # print(chi / chi_rad)
+                    lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
+                    Gamma_thermal = -1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
+
+                    ### GR Inspiral torque
+                    Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / 10**spl_cs(logr))**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
+                    
+                    Gamma += Gamma_thermal + Gamma_GW
                     torques[ii] = Gamma
                     
                 pos_vals = torques > 0 
                 neg_vals = torques <= 0 
                 pos_torques = [torques[i] if pos_vals[i] else np.nan for i in range(len(torques))]
                 neg_torques = [-torques[i] if neg_vals[i] else np.nan for i in range(len(torques))]
-                ax.plot(log_radii, pos_torques, c=colours[i], label=f'$M=10^{int(np.log10(M))}$')
-                ax.plot(log_radii, neg_torques, c=colours[i], ls='--')
+                ax.plot(log_radii, pos_torques, c=colours[i], label=f'$M=10^{int(np.log10(M))}$', rasterized=True)
+                ax.plot(log_radii, neg_torques, c=colours[i], ls='--', rasterized=True)
     ax.set(xscale='log', yscale='log', xlabel="log$(R/R_s)$", ylabel='abs($\Gamma$)')
     ax.legend()
+    handles, labels = ax.get_legend_handles_labels()
+    from matplotlib.lines import Line2D
+    p1 = Line2D([0], [0], color='k', ls='-', label='$+$ve'); handles.append(p1)
+    p2 = Line2D([0], [0], color='k', ls='--', label='$-$ve'); handles.append(p2)
+    ax.legend(handles=handles)
     ax.grid()
     fig.savefig('Images/Torque_Model.png', dpi=400, bbox_inches='tight')
+    fig.savefig('Images/Torque_Model.pdf', dpi=400, bbox_inches='tight')
 
 # plot_many_models()
 plot_torques()
