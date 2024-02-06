@@ -212,7 +212,7 @@ def save_disk_model(disk_params, location='', name='', save_all=False):
         if index == 0:
             np.savetxt(filenames[index], np.log10(disk_params[index]), delimiter=',')
         elif index == 13:
-            np.savetxt(filenames[index], np.log10(10**disk_params[11] + 10**disk_params[12]), delimiter=',')
+            np.savetxt(filenames[index], np.log10(10**disk_params[11] + 10**disk_params[12]) + 1, delimiter=',')    # +1 to go from cgs to SI
         else:
             np.savetxt(filenames[index], disk_params[index], delimiter=',')
 
@@ -302,8 +302,106 @@ def plot_many_models():
     fig.savefig("Images/SGDiskModels.png", dpi=400, bbox_inches='tight')
     fig.savefig("Images/SGDiskModels.pdf", dpi=400, bbox_inches='tight')
 
+def plot_torques(M, f_edd, visc, disk_params, save=False, location=''):
+    '''
+    Open problems:
+        1. Not sure whether to model based on total pressure or just gas pressure. Evgeni modelled by gas pressure, and this
+            means that there are some migration traps in the inner disk; these migration traps disappear when modelling via total pressure
+        2. Need to plot regions of parameter space that contain at least one migration trap (and at what radius!)
+    '''
+    import scipy.interpolate as interp
 
-def plot_torques():
+    fig, ax = plt.subplots()
+
+    accretion = 0.1
+    
+    bh_mass = 10 * M_odot_cgs
+    gamma_coeff = 5/3 
+
+    rs = 2 * G_cgs * M * M_odot_cgs / c_cgs**2
+    log_radii, t_eff, temps, tau, kappa, Sigma, cs, rho, h, Q, beta, prad, pgas = disk_model(M, f_edd, visc, 0)
+
+    spl_sigma = interp.CubicSpline(np.log10(log_radii), Sigma, extrapolate=True)
+    spl_temp = interp.CubicSpline(np.log10(log_radii), temps, extrapolate=True)
+    spl_dens = interp.CubicSpline(np.log10(log_radii), rho, extrapolate=True)
+    spl_h = interp.CubicSpline(np.log10(log_radii), h, extrapolate=True)
+    spl_kappa = interp.CubicSpline(np.log10(log_radii), kappa, extrapolate=True)
+    spl_tau = interp.CubicSpline(np.log10(log_radii), tau, extrapolate=True)
+    spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True) # total pressure
+    # spl_P = interp.CubicSpline(np.log10(log_radii), pgas, extrapolate=True)     # radiation pressure
+    spl_cs = interp.CubicSpline(np.log10(log_radii), cs, extrapolate=True)
+
+    def alpha(r): return -spl_sigma.derivative()(np.log10(r))
+    def beta(r): return -spl_temp.derivative()(np.log10(r))
+    def P_deriv(r): return -spl_P.derivative()(np.log10(r))
+    
+    log_radii = np.logspace(1, 5, 1000)
+    torques = np.zeros(len(log_radii))
+
+    for ii, r in enumerate(log_radii):
+        logr = np.log10(r)
+        Gamma_0 = ((10/M) / 10**spl_h(logr))**2 * 10**spl_sigma(logr) * (r*rs)**4 * angvel(r*rs, M)**2
+        
+        ### Migration from pardekooper
+        # c_v = 14304 / 1000
+        # tau_eff = 3 * 10**spl_tau(logr) / 8 + np.sqrt(3)/4 + 0.25 / 10**spl_tau(logr)
+        # Theta = (c_v * 10**spl_sigma(logr) * angvel(r*rs, M) * tau_eff) / (12. * np.pi * stef_boltz * 10**(3 * spl_temp(logr)));
+        # Gamma_iso = -0.85 - alpha(r) - 0.9 * beta(r)
+        # xi = beta(r) - (gamma_coeff - 1) * alpha(r)
+        # Gamma_ad = (-0.85 - alpha(r) - 1.7 * beta(r) + 7.9 * xi / gamma_coeff) / gamma_coeff;
+        # Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
+        
+        ### Migration from Jimenez
+        H = 10**spl_h(logr) * r*rs
+        chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
+        chi_chi_c = chi / (H**2 * angvel(r*rs, M))
+        fx = (np.sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (np.sqrt(chi_chi_c / 2.) + 1.);
+        Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
+        Gamma_simp_corot = (0.46 - 0.96 * alpha(r) + 1.8 * beta(r)) / gamma_coeff;
+        Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
+
+        ### Thermal torques
+        dPdr = P_deriv(r)
+        x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
+        L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
+        # L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)       # accretion assuming the AGN disk composition
+        # below are equations 17-23 from gilbaum 2022
+        R_BHL = 2 * G_cgs * bh_mass / (H * angvel(r*rs, M))**2
+        R_H = r*rs * np.cbrt(10 / (3 * M))
+        b_H = np.sqrt(R_BHL * R_H)
+        mdot_RBHL = np.pi * min(R_BHL, b_H) * min(R_BHL, b_H, H) * (H * angvel(r*rs, M))
+        L_RBHL = 0.1 * c_cgs**2 * mdot_RBHL
+        L = min(L_RBHL, L / accretion)
+        
+        Lc = 4. * np.pi * G_cgs * bh_mass * 10**spl_dens(logr) * chi / gamma_coeff
+        # print(L/Lc)
+        lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
+        Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
+
+        ### GR Inspiral torque
+        Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / 10**spl_cs(logr))**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
+        
+        Gamma += Gamma_thermal + Gamma_GW
+        torques[ii] = Gamma
+        
+    pos_vals = torques > 0 
+    neg_vals = torques <= 0 
+    pos_torques = [torques[i] if pos_vals[i] else np.nan for i in range(len(torques))]
+    neg_torques = [-torques[i] if neg_vals[i] else np.nan for i in range(len(torques))]
+    ax.plot(log_radii, pos_torques, label='$+$ve', rasterized=True)
+    ax.plot(log_radii, neg_torques, ls='--', label='$-$ve', rasterized=True)
+    
+    ax.set(xscale='log', yscale='log', xlabel="log$(R/R_s)$", ylabel='abs($\Gamma$)')
+    ax.legend()
+    ax.grid()
+    if save:
+        path = os.path.dirname(os.path.abspath(__file__)) + location
+        if not os.path.isdir(path):
+            os.mkdir(path)
+        fig.savefig(path + 'Torque_Model.png', dpi=400, bbox_inches='tight')
+        fig.savefig(path + 'Torque_Model.pdf', dpi=400, bbox_inches='tight')
+
+def plot_many_torques():
     '''
     Open problems:
         1. Not sure whether to model based on total pressure or just gas pressure. Evgeni modelled by gas pressure, and this
@@ -319,7 +417,7 @@ def plot_torques():
 
     accretion = 0.1
     masses = [1e6, 1e7, 1e8, 1e9]
-    fracs = [0.1]
+    fracs = [0.5]
     # alphas = [0.01, 0.1]
     alphas = [0.01]
     colours = ['tab:orange', 'tab:red', 'tab:purple', 'tab:blue']
@@ -333,7 +431,7 @@ def plot_torques():
 
     for i, M in enumerate(masses):
         for j, f_edd in enumerate(fracs):
-            for k, visc in enumerate(alphas):
+            for jj, visc in enumerate(alphas):
                 rs = 2 * G_cgs * M * M_odot_cgs / c_cgs**2
                 log_radii, t_eff, temps, tau, kappa, Sigma, cs, rho, h, Q, beta, prad, pgas = disk_model(M, f_edd, visc, 0)
 
@@ -343,8 +441,8 @@ def plot_torques():
                 spl_h = interp.CubicSpline(np.log10(log_radii), h, extrapolate=True)
                 spl_kappa = interp.CubicSpline(np.log10(log_radii), kappa, extrapolate=True)
                 spl_tau = interp.CubicSpline(np.log10(log_radii), tau, extrapolate=True)
-                # spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True) # total pressure
-                spl_P = interp.CubicSpline(np.log10(log_radii), pgas, extrapolate=True)     # radiation pressure
+                spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True) # total pressure
+                # spl_P = interp.CubicSpline(np.log10(log_radii), pgas, extrapolate=True)     # radiation pressure
                 spl_cs = interp.CubicSpline(np.log10(log_radii), cs, extrapolate=True)
 
                 def alpha(r): return -spl_sigma.derivative()(np.log10(r))
@@ -369,7 +467,7 @@ def plot_torques():
                     
                     ### Migration from Jimenez
                     H = 10**spl_h(logr) * r*rs
-                    chi = 16. * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
+                    chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
                     chi_chi_c = chi / (H**2 * angvel(r*rs, M))
                     fx = (np.sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (np.sqrt(chi_chi_c / 2.) + 1.);
                     Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
@@ -379,8 +477,8 @@ def plot_torques():
                     ### Thermal torques
                     dPdr = P_deriv(r)
                     x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
-                    # L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
-                    L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)       # accretion assuming the AGN disk composition
+                    L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
+                    # L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)       # accretion assuming the AGN disk composition
                     # below are equations 17-23 from gilbaum 2022
                     R_BHL = 2 * G_cgs * bh_mass / (H * angvel(r*rs, M))**2
                     R_H = r*rs * np.cbrt(10 / (3 * M))
@@ -390,9 +488,11 @@ def plot_torques():
                     L = min(L_RBHL, L / accretion)
                     
                     Lc = 4. * np.pi * G_cgs * bh_mass * 10**spl_dens(logr) * chi / gamma_coeff
+                    # print(L/Lc)
                     lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
                     Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
-
+                    if M == 1e8:
+                        print(x_c / lambda_)
                     ### GR Inspiral torque
                     Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / 10**spl_cs(logr))**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
                     
@@ -413,8 +513,10 @@ def plot_torques():
     p2 = Line2D([0], [0], color='k', ls='--', label='$-$ve'); handles.append(p2)
     ax.legend(handles=handles)
     ax.grid()
-    fig.savefig('Images/Torque_Model.png', dpi=400, bbox_inches='tight')
+    fig.savefig('Torque_Model.png', dpi=400, bbox_inches='tight')
     fig.savefig('Images/Torque_Model.pdf', dpi=400, bbox_inches='tight')
+    
+
 
 # plot_many_models()
-plot_torques()
+# plot_many_torques()
