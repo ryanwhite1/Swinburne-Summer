@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MASS=6
+MASS=8
 FEDD=0.5
 ALPH=0.01
 

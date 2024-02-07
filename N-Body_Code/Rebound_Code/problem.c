@@ -8,7 +8,7 @@
 #include "spline.h"
 
 // initialise variables and simulation feature variables
-double tmax, agnmass, alpha, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, r_isco, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T;
+double tmax, agnmass, alpha, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, r_isco, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T, Nr_s;
 const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.;
 char output_folder[200] = "./OUTPUT_", orbits_filename[200], positions_filename[200], mergers_filename[200], r_filename[200], sigma_filename[200], temp_filename[200], aratio_filename[200], opacity_filename[200], pressure_filename[200];
 int num_BH                  = 0;            // integer value to track how many seed BHs we've had in total so far
@@ -114,10 +114,11 @@ double disk_dens(double logr){
     return disk_surfdens(logr) / (2. * disk_aspectratio(logr) * pow(10., logr));
 }
 double disk_angvel(double logr){
-    double omega = sqrt(G_pc * agnmass / pow((pow(10., logr) * 2. * r_g), 3)) * 1000;
-    return omega * lenscale / velscale;
+    double omega = sqrt(G_pc * pc_to_m*1e6 * agnmass / pow((pow(10., logr) * r_s * pc_to_m), 3));
+    return omega * timescale;
 }
 double disk_sigma_deriv(double logr){
+    // return splderiv(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr) + 1. + log10(lenscale_m*lenscale_m / massscale);
     return splderiv(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr);
 }
 double disk_temp_deriv(double logr){
@@ -127,6 +128,7 @@ double disk_aspratio_deriv(double logr){
     return splderiv(log_radii_data, log_aratio_data, log_aratio_spline, n_spline_data, logr);
 }
 double disk_pressure_deriv(double logr){
+    // return splderiv(log_radii_data, log_pressure_data, log_pressure_spline, n_spline_data, logr) + 1. + log10(lenscale_m*timescale*timescale / massscale);
     return splderiv(log_radii_data, log_pressure_data, log_pressure_spline, n_spline_data, logr);
 }
 
@@ -468,13 +470,14 @@ void disk_forces(struct reb_simulation* r){
         double logr = log10(radius / nondim_rs), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
         double kappa = disk_opacity(logr), temp = disk_temp(logr);
         double H = asp_ratio * radius;
-        double density = Sigma / H; 
+        double density = Sigma / (2 * H); 
+        double cs = angvel * H;
 
         double tau = kappa * Sigma / 2, tau_eff = 3 * tau / 8 + sqrt(3) / 4 + 1. / (4 * tau);    // define optical depth params
         // start with the Type I migration as in Pardekooper (?)
         double nabla_sig = -disk_sigma_deriv(logr), nabla_T = -disk_temp_deriv(logr), xi = nabla_T - (gamma_coeff - 1) * nabla_sig; // define disk gradient properties
         double Gamma_0 = (q/asp_ratio)*(q/asp_ratio) * Sigma * radius*radius*radius*radius * angvel*angvel;
-        double Gamma = 0;
+        double Gamma = 0., chi = 0.;
 
         // below 2 lines were used when simulating retrograde orbiters (keeping for posterity). If Lz >= 0, BH on prograde orbit and retrograde otherwise
         // const double Lz = dx * dvy - dy * dvx;
@@ -487,41 +490,53 @@ void disk_forces(struct reb_simulation* r){
             Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
         }
         else if (MIGRATION_PRESCRIPTION == 1){
-            double R_mu = 8.3145 / (2.016 / 1000.) * massscale;     // ideal gass constant over the mean molecular weight of H2, nondimensionalised
             // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
-            double chi_chi_c = (16. * (gamma_coeff - 1.) * stefboltz * temp*temp*temp / (3. * density*density * R_mu * kappa)) / (radius*radius * asp_ratio*asp_ratio * angvel);
+            chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs);
+            double chi_chi_c = chi / (H*H * angvel);
+            printf("%.8e\n", chi_chi_c);
             double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);
-            double Gamma_lindblad = - (2.34 - 0.1 * nabla_sig + 1.5 * nabla_T) * fx;
+            double Gamma_lindblad = (-2.34 + 0.1 * nabla_sig - 1.5 * nabla_T) * fx;
             double Gamma_simp_corot = (0.46 - 0.96 * nabla_sig + 1.8 * nabla_T) / gamma_coeff;
             Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
         }
 
-        double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
-        // add migration to the acceleration total
-        p->ax += -dy * Gamma_mag / radius;
-        p->ay += dx * Gamma_mag / radius;
-
         //// now look at Evgeni's thermal torques
         if (THERMAL_TORQUES == 1){
-            double dPdr = disk_pressure_deriv(logr);
-            double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * alpha * H*H * angvel;
-            double x_c = dPdr * H*H / (3 * gamma_coeff * radius);
-            double L = 0., Lc = 1.;      // set our bodies luminosity value to 0 so that it has no effect
+            double nabla_P = -disk_pressure_deriv(logr);
+            
+            if (chi == 0.){
+                chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs);
+            }
+            double x_c = nabla_P * H*H / (3. * gamma_coeff * radius);
+            double L_Lc = 0.;      // set our bodies luminosity value to 0 so that it has no effect
             if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
-                L = ACCRETION * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;     // some proportion (given by ACCRETION) of the eddington luminosity
-                Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
+                // double L_edd = 10. * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;  // eddington luminosity
+                // double R_BHL = 2. * G * mass / (cs*cs);
+                // double R_H = radius * cbrt(q / 3.);
+                // double b_H = sqrt(R_BHL * R_H);
+                // double mdot_RBHL = M_PI * fmin(R_BHL, b_H) * fmin(R_BHL, fmin(b_H, H)) * cs;
+                // double L_RBHL = 0.1 * c_nbody*c_nbody * mdot_RBHL;
+                // L = fmin(L_RBHL, L_edd);
+                // L = L_edd;
+                // Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
+                // L_Lc = L / Lc;
+                L_Lc = gamma_coeff * m_p * c_nbody / (sigma_T * density * chi);     // eddington luminosity over critical luminosity
             }
             double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
-            double Gamma_thermal = 1.61 * (gamma_coeff - 1.) / gamma_coeff * x_c / lambda * (L/Lc - 1.) * Gamma_0 / asp_ratio;
-            p->ax += -dy * Gamma_thermal / (mass * radius*radius);
-            p->ay += dx * Gamma_thermal / (mass * radius*radius);
+            double Gamma_thermal = 1.61 * (gamma_coeff - 1.) / gamma_coeff * x_c / lambda * (L_Lc - 1.) * Gamma_0 / asp_ratio;
+            // printf("%.8e\n", L_Lc);
+            Gamma += Gamma_thermal;
+            
         }
 
         // now add GW inspiral torque from Peters 1964 and Grishin 2023
-        double cs = angvel * H;
-        double Gamma_GW = Gamma_0 * (-32./5. * pow(c_nbody/cs, 3.) * pow(asp_ratio, 6.)) * pow(nondim_rs / (2 * radius), 4.) / (Sigma * radius*radius);
-        p->ax += -dy * Gamma_GW / (mass * radius*radius);
-        p->ay += dx * Gamma_GW / (mass * radius*radius);
+        double Gamma_GW = Gamma_0 * (-32./5. * pow(c_nbody/cs, 3.) * pow(asp_ratio, 6.)) * pow(nondim_rs / (2. * radius), 4.) / (Sigma * radius*radius);
+        Gamma += Gamma_GW;
+
+        double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
+        // add torque to the acceleration total
+        p->ax += -dy * Gamma_mag / radius;
+        p->ay += dx * Gamma_mag / radius;
         
         // now lets add in eccentricity/inclination damping
         double mu = G*(com.m + mass);
@@ -589,7 +604,6 @@ void disk_forces(struct reb_simulation* r){
 
 void init_conds(int N, int mass, struct reb_simulation* r){
     agnmass = pow(10., mass);
-    double Nr_s = 1e3;
     r_g = G_pc * agnmass / 9e10; r_s = 2. * r_g;
     lenscale = Nr_s * r_s;
     lenscale_m = lenscale * pc_to_m;
@@ -597,9 +611,10 @@ void init_conds(int N, int mass, struct reb_simulation* r){
     nondim_rs = r_s / lenscale;
     r_isco = 3. * nondim_rs;
     timescale = sqrt(pow(lenscale_m, 3.) / (G_pc * agnmass * pc_to_m * 1000.*1000.));
-    velscale = sqrt(G_pc * agnmass / lenscale) * 1000.;
+    // velscale = sqrt(G_pc * agnmass / lenscale) * 1000.;
+    velscale = lenscale_m / timescale;
     massscale = agnmass * M_odot;
-    stefboltz = 5.67e-8 * lenscale_m*lenscale_m * timescale;         // non-dimensionalised boltzmann constant
+    stefboltz = 5.67e-8 * timescale*timescale*timescale / massscale;         // non-dimensionalised boltzmann constant
     c_v = 14304. * massscale;       // specific heat capacity of H2 gas, non-dimensionalised
     c_nbody = c / velscale;         // non-dimensionalised speed of light
     m_p = 1.67e-27 / massscale;     // proton mass
@@ -668,6 +683,7 @@ int main(int argc, char* argv[]){
 
     // Initial conditions
     int initial_BH = 10;
+    Nr_s = 1e3;
     init_conds(initial_BH, mass, r);
 
     reb_simulation_move_to_com(r);          

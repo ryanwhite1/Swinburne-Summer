@@ -467,8 +467,9 @@ def plot_many_torques():
                     # Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
                     
                     ### Migration from Jimenez
+                    cs = 10**spl_cs(logr)
                     H = 10**spl_h(logr) * r*rs
-                    chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * (angvel(r*rs, M) * H)**2)
+                    chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * cs**2)
                     chi_chi_c = chi / (H**2 * angvel(r*rs, M))
                     fx = (np.sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (np.sqrt(chi_chi_c / 2.) + 1.);
                     Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
@@ -481,10 +482,10 @@ def plot_many_torques():
                     x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
                     L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
                     # below are equations 17-23 from gilbaum 2022
-                    R_BHL = 2 * G_cgs * bh_mass / (H * angvel(r*rs, M))**2
+                    R_BHL = 2 * G_cgs * bh_mass / cs**2
                     R_H = r*rs * np.cbrt(10 / (3 * M))
                     b_H = np.sqrt(R_BHL * R_H)
-                    mdot_RBHL = np.pi * min(R_BHL, b_H) * min(R_BHL, b_H, H) * (H * angvel(r*rs, M))
+                    mdot_RBHL = np.pi * min(R_BHL, b_H) * min(R_BHL, b_H, H) * cs
                     L_RBHL = 0.1 * c_cgs**2 * mdot_RBHL
                     L = min(L_RBHL, L / accretion)
                     
@@ -492,11 +493,14 @@ def plot_many_torques():
                     # print(L/Lc)
                     lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
                     Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
-
+                    
                     ### GR Inspiral torque
-                    Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / 10**spl_cs(logr))**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
-                    # if M==1e8: 
-                    #     print(Gamma_thermal / Gamma)
+                    Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / cs)**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
+                    if M==1e8 and (1e3 <= r <= 4e3): 
+                        # print(x_c / lambda_)
+                        # print(Gamma_thermal / Gamma)
+                        # print(L/Lc)
+                        print(chi_chi_c)
                     #     ax2.scatter(r, Gamma_thermal/Gamma, s=1)
                     Gamma += Gamma_thermal + Gamma_GW
                     torques[ii] = Gamma
