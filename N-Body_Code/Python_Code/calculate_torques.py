@@ -252,9 +252,9 @@ def get_disc_torques(mm,m_stellar, m_dot,alpha, which_prefactor):
 # accretion rate in units of m_crit (See Shakura & sunyaev for definetion)
 m_dot=0.1 
 #alpha viscosity
-alpha=0.01
+alpha=0.1
 # SMBH mass in units of 1e8 M_\odot
-m_smbh = 0.1
+m_smbh = 10
 # mass of stellar mass BH - in m_\odot
 m_stellar = 10
 # whici law for type I to use

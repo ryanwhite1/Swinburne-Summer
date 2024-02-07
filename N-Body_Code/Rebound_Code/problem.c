@@ -491,7 +491,7 @@ void disk_forces(struct reb_simulation* r){
         }
         else if (MIGRATION_PRESCRIPTION == 1){
             // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
-            chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs * 10.);  // multiple of 10 in the denominator to fix a bug which I have no idea why exists
+            chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs);  // multiple of 10 in the denominator to fix a bug which I have no idea why exists
             double chi_chi_c = chi / (H*H * angvel);
             // printf("%.8e\n", chi_chi_c);
             double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);

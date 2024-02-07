@@ -22,7 +22,7 @@ G = 6.67e-11
 G_pc = 4.3e-3
 G_cgs = G * 1e3
 M_odot = 1.98e30
-M_odot_cgs = M_odot * 1e2
+M_odot_cgs = M_odot * 1e3
 c = 299792458.
 c_cgs = c * 100
 mu = 0.62               # average molecular weight ?
@@ -522,6 +522,108 @@ def plot_many_torques():
     
     # ax2.set(xscale='log')
 
+def plot_migration_traps(visc):
+    fig, ax = plt.subplots()
+    n_M = 20
+    n_edd = 20
+    bh_mass = 10 * M_odot_cgs
+    gamma_coeff = 5/3 
+    trap_rads = np.ones((n_M, n_edd))
+    masses = np.logspace(6, 9, n_M)
+    fractions = np.logspace(-2, 0, n_edd)
+    for i, M in enumerate(masses):
+        for j, f_edd in enumerate(fractions):
+            rs = 2 * G_cgs * M * M_odot_cgs / c_cgs**2
+            log_radii, t_eff, temps, tau, kappa, Sigma, cs, rho, h, Q, beta, prad, pgas = disk_model(M, f_edd, visc, 0)
+    
+            spl_sigma = interp.CubicSpline(np.log10(log_radii), Sigma, extrapolate=True)
+            spl_temp = interp.CubicSpline(np.log10(log_radii), temps, extrapolate=True)
+            spl_dens = interp.CubicSpline(np.log10(log_radii), rho, extrapolate=True)
+            spl_h = interp.CubicSpline(np.log10(log_radii), h, extrapolate=True)
+            spl_kappa = interp.CubicSpline(np.log10(log_radii), kappa, extrapolate=True)
+            spl_tau = interp.CubicSpline(np.log10(log_radii), tau, extrapolate=True)
+            spl_P = interp.CubicSpline(np.log10(log_radii), np.log10(10**prad + 10**pgas), extrapolate=True) # total pressure
+            spl_cs = interp.CubicSpline(np.log10(log_radii), cs, extrapolate=True)
+    
+            def alpha(r): return -spl_sigma.derivative()(np.log10(r))
+            def beta(r): return -spl_temp.derivative()(np.log10(r))
+            def P_deriv(r): return -spl_P.derivative()(np.log10(r))
+            
+            log_radii = np.logspace(1, 5, 1000)
+            torques = np.zeros(len(log_radii))
+    
+            for ii, r in enumerate(log_radii):
+                logr = np.log10(r)
+                Gamma_0 = ((10/M) / 10**spl_h(logr))**2 * 10**spl_sigma(logr) * (r*rs)**4 * angvel(r*rs, M)**2
+                
+                ### Migration from pardekooper
+                # c_v = 14304 / 1000
+                # tau_eff = 3 * 10**spl_tau(logr) / 8 + np.sqrt(3)/4 + 0.25 / 10**spl_tau(logr)
+                # Theta = (c_v * 10**spl_sigma(logr) * angvel(r*rs, M) * tau_eff) / (12. * np.pi * stef_boltz * 10**(3 * spl_temp(logr)));
+                # Gamma_iso = -0.85 - alpha(r) - 0.9 * beta(r)
+                # xi = beta(r) - (gamma_coeff - 1) * alpha(r)
+                # Gamma_ad = (-0.85 - alpha(r) - 1.7 * beta(r) + 7.9 * xi / gamma_coeff) / gamma_coeff;
+                # Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1)*(Theta + 1));
+                
+                ### Migration from Jimenez
+                cs = 10**spl_cs(logr)
+                H = 10**spl_h(logr) * r*rs
+                chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stef_boltz * 10**(4 * spl_temp(logr)) / (3. * 10**(2 * spl_dens(logr)) * 10**spl_kappa(logr) * cs**2)
+                chi_chi_c = chi / (H**2 * angvel(r*rs, M))
+                fx = (np.sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (np.sqrt(chi_chi_c / 2.) + 1.);
+                Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
+                Gamma_simp_corot = (0.46 - 0.96 * alpha(r) + 1.8 * beta(r)) / gamma_coeff;
+                Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
+                
+                ## Thermal torques
+                dPdr = P_deriv(r)
+                x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
+                L = 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
+                # below are equations 17-23 from gilbaum 2022
+                # R_BHL = 2 * G_cgs * bh_mass / cs**2
+                # R_H = r*rs * np.cbrt(10 / (3 * M))
+                # b_H = np.sqrt(R_BHL * R_H)
+                # mdot_RBHL = np.pi * min(R_BHL, b_H) * min(R_BHL, b_H, H) * cs
+                # L_RBHL = 0.1 * c_cgs**2 * mdot_RBHL
+                # L = min(L_RBHL, L)
+                Lc = 4. * np.pi * G_cgs * bh_mass * 10**spl_dens(logr) * chi / gamma_coeff
+                lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
+                Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
+                
+                ### GR Inspiral torque
+                Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / cs)**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
+    
+                Gamma += Gamma_thermal + Gamma_GW
+                torques[ii] = Gamma
+                
+            if torques[-1] < 0:
+                for n_torque, torque in enumerate(torques[::-1]):
+                    k = len(torques) - n_torque
+                    if torque >= 0:
+                        trap_rads[i, j] = log_radii[k]
+                        break
+            # fig2, ax2 = plt.subplots()
+            # pos_vals = torques > 0 
+            # neg_vals = torques <= 0 
+            # pos_torques = [torques[iii] if pos_vals[iii] else np.nan for iii in range(len(torques))]
+            # neg_torques = [-torques[iii] if neg_vals[iii] else np.nan for iii in range(len(torques))]
+            # ax2.plot(log_radii, pos_torques, rasterized=True)
+            # ax2.plot(log_radii, neg_torques, ls='--', rasterized=True)
+            # ax2.set(xscale='log', yscale='log')
+    x, y = np.meshgrid(masses, fractions)
+    from matplotlib.colors import LogNorm
+    # from matplotlib import cm, ticker
+    contour = ax.pcolormesh(x, y, trap_rads, cmap='viridis', 
+                            norm=LogNorm(vmin=trap_rads.min(), vmax=trap_rads.max()),
+                            rasterized=True)
+    ax.set(xlabel='SMBH Mass', ylabel='Eddington Fraction', xscale='log', yscale='log')
+    fig.colorbar(contour, label='Migration Trap Location ($R_s$)')
+    fig.savefig(f'Images/MigrationTraps-alph{visc}.png', dpi=400, bbox_inches='tight')
+    fig.savefig(f'Images/MigrationTraps-alph{visc}.pdf', dpi=400, bbox_inches='tight')
+                
+                    
+            
 
 # plot_many_models()
 # plot_many_torques()
+# plot_migration_traps(0.1)
