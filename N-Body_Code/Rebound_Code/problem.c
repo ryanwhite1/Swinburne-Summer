@@ -9,7 +9,7 @@
 
 // initialise variables and simulation feature variables
 double tmax, agnmass, alpha, r_g, r_s, massscale, lenscale, lenscale_m, lenscale_rs, nondim_rs, r_isco, timescale, velscale, stefboltz, c_v, c_nbody, m_p, sigma_T, Nr_s;
-const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3.;
+const double G_pc = 4.3e-3, M_odot = 1.98e30, c = 3e8, pc_to_m = 3.086e16, gamma_coeff = 5./3., G_cgs = 6.67e-8, c_cgs = 3e10;
 char output_folder[200] = "./OUTPUT_", orbits_filename[200], positions_filename[200], mergers_filename[200], r_filename[200], sigma_filename[200], temp_filename[200], aratio_filename[200], opacity_filename[200], pressure_filename[200];
 int num_BH                  = 0;            // integer value to track how many seed BHs we've had in total so far
 int MIGRATION_PRESCRIPTION  = 0;            // 0 for Pardekooper (2010?) migration prescription, 1 for Jimenez and Masset (2017)
@@ -97,8 +97,7 @@ void eval_splines(){
     spline(log_radii_data, log_pressure_data, n_spline_data, log_pressure_spline);
 }
 double disk_surfdens(double logr){
-    double sigma = pow(10., splint(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr) + 1.); // +1 in power to go from cgs to SI
-    return sigma * lenscale_m * lenscale_m / massscale;
+    return pow(10., splint(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr)); // +1 in power to go from cgs to SI
 }
 double disk_temp(double logr){
     return pow(10., splint(log_radii_data, log_temps_data, log_temp_spline, n_spline_data, logr));
@@ -107,18 +106,17 @@ double disk_aspectratio(double logr){
     return pow(10., splint(log_radii_data, log_aratio_data, log_aratio_spline, n_spline_data, logr));
 }
 double disk_opacity(double logr){
-    double kappa = pow(10., splint(log_radii_data, log_opacity_data, log_opacity_spline, n_spline_data, logr) - 1.); // -1 to go from cgs to SI
-    return kappa * massscale / (lenscale_m * lenscale_m);
+    return pow(10., splint(log_radii_data, log_opacity_data, log_opacity_spline, n_spline_data, logr)); // -1 to go from cgs to SI
 }
 double disk_dens(double logr){
     return disk_surfdens(logr) / (2. * disk_aspectratio(logr) * pow(10., logr));
 }
 double disk_angvel(double logr){
     double omega = sqrt(G_pc * agnmass / pow((pow(10., logr) * r_s), 3.)) * 1000.;
-    return omega * lenscale / velscale;
+    return omega / pc_to_m;
 }
 double disk_sigma_deriv(double logr){
-    return splderiv(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr) + 1 + log10(lenscale_m / massscale);
+    return splderiv(log_radii_data, log_sigma_data, log_sigma_spline, n_spline_data, logr);
 }
 double disk_temp_deriv(double logr){
     return splderiv(log_radii_data, log_temps_data, log_temp_spline, n_spline_data, logr);
@@ -127,7 +125,7 @@ double disk_aspratio_deriv(double logr){
     return splderiv(log_radii_data, log_aratio_data, log_aratio_spline, n_spline_data, logr);
 }
 double disk_pressure_deriv(double logr){
-    return (splderiv(log_radii_data, log_pressure_data, log_pressure_spline, n_spline_data, logr) + 1.) / (lenscale * lenscale);
+    return splderiv(log_radii_data, log_pressure_data, log_pressure_spline, n_spline_data, logr);
 }
 
 
@@ -174,7 +172,7 @@ void check_mergers(struct reb_simulation* r){
                 if (MERGER_CRITERION == 0){     // classic binding energy < relative kinetic energy
                     merger = binding_energy < rel_kin_energy;
                 } else if (MERGER_CRITERION == 1){      // criterion based on the results of Li et al 2023
-                    double logr = log10(r1 / nondim_rs), Sigma = disk_surfdens(logr);
+                    double logr = log10(r1 / nondim_rs), Sigma = disk_surfdens(logr) * 10*lenscale_m*lenscale_m / massscale;
                     double cond = (Sigma * r1*r2) / (m1 + m2);
                     double abs_Ehill = (m1 + m2) / (2. * R_mH);
                     double E_b = rel_kin_energy / reduced_mass - (m1 + m2) / (0.3 * R_mH);
@@ -452,7 +450,7 @@ void disk_forces(struct reb_simulation* r){
 
     for (int i = 1; i < N; i++){
         struct reb_particle* p = &(particles[i]); // get the particle
-        int p_hash = p->hash;
+        // int p_hash = p->hash;
         // first calculate the radius of the particle
         const double dx = p->x-com.x;
         const double dy = p->y-com.y;
@@ -460,29 +458,31 @@ void disk_forces(struct reb_simulation* r){
         const double dvx = p->vx-com.vx;
         const double dvy = p->vy-com.vy;
         const double dvz = p->vz-com.vz;
-        const double mass = p->m, q = mass;
-        double radius = sqrt(dx*dx + dy*dy + dz*dz);
+        double mass = p->m; mass *= massscale * 1e3;
+        double radius = sqrt(dx*dx + dy*dy + dz*dz); radius *= lenscale_m * 1e2;
         const double vr = (dx*dvx + dy*dvy + dz*dvz);   // dot product of v and r
-        
+        double q = mass / (agnmass * M_odot * 1e3);
         // now define constants and calculate disk properties at this radius
-        double logr = log10(radius / nondim_rs), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
+        double logr = log10(radius / (r_s * pc_to_m * 1e2)), Sigma = disk_surfdens(logr), angvel = disk_angvel(logr), asp_ratio = disk_aspectratio(logr);
         double kappa = disk_opacity(logr), temp = disk_temp(logr);
         double H = asp_ratio * radius;
-        double density = disk_dens(logr); 
+        // double density = disk_dens(logr); 
+        double density = Sigma / (2. * H);
         double cs = angvel * H;
-
+        
         double tau = kappa * Sigma / 2., tau_eff = 3. * tau / 8. + sqrt(3.) / 4. + 1. / (4. * tau);    // define optical depth params
         // start with the Type I migration as in Pardekooper (?)
         double nabla_sig = -disk_sigma_deriv(logr), nabla_T = -disk_temp_deriv(logr), xi = nabla_T - (gamma_coeff - 1.) * nabla_sig; // define disk gradient properties
         double Gamma_0 = (q/asp_ratio)*(q/asp_ratio) * Sigma * radius*radius*radius*radius * angvel*angvel;
         double Gamma = 0., chi = 0.;
-
+        // printf("%.8e \n", Gamma_0);
         // below 2 lines were used when simulating retrograde orbiters (keeping for posterity). If Lz >= 0, BH on prograde orbit and retrograde otherwise
         // const double Lz = dx * dvy - dy * dvx;
         // double a, e;
+        stefboltz *= 1e3 * massscale / (timescale*timescale*timescale);
 
         if (MIGRATION_PRESCRIPTION == 0){
-            double Theta = (c_v * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * pow(temp, 3.));
+            double Theta = (c_v/(massscale*1e3) * Sigma * angvel * tau_eff) / (12. * M_PI * stefboltz * temp*temp*temp);
             double Gamma_iso = -0.85 - nabla_sig - 0.9 * nabla_T;
             double Gamma_ad = (-0.85 - nabla_sig - 1.7 * nabla_T + 7.9 * xi / gamma_coeff) / gamma_coeff;
             Gamma = Gamma_0 * (Gamma_ad * Theta*Theta + Gamma_iso) / ((Theta + 1.)*(Theta + 1.));
@@ -497,33 +497,32 @@ void disk_forces(struct reb_simulation* r){
             double Gamma_lindblad = - (2.34 - 0.1 * nabla_sig + 1.5 * nabla_T) * fx;
             double Gamma_simp_corot = (0.46 - 0.96 * nabla_sig + 1.8 * nabla_T) / gamma_coeff;
             Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
-            // printf("%.8e ", Gamma);
+            
         }
 
         //// now look at Evgeni's thermal torques
         if (THERMAL_TORQUES == 1){
-            double dPdr = -disk_pressure_deriv(logr);
+            double nabla_P = -disk_pressure_deriv(logr);
             // double chi = 9. * gamma_coeff * (gamma_coeff - 1.) / 2. * alpha * H*H * angvel;
             if (chi == 0.){
                 chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs);
             }
-            double x_c = dPdr * H*H / (3. * gamma_coeff * radius);
+            
+            double x_c = nabla_P * H*H / (3. * gamma_coeff * radius);
             double L = 0., Lc = 1.;      // set our bodies luminosity value to 0 so that it has no effect
             double L_Lc = 0.;
             if (ACCRETION > 0.){    // update our luminosities to have a thermal effect
-                // L = ACCRETION * 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;     // some proportion (given by ACCRETION) of the eddington luminosity
-                // Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
-
-                double L_edd = 4. * M_PI * G * mass * m_p * c_nbody / sigma_T;
-                double R_BHL = 2. * G * mass / ((H*angvel)*(H*angvel));
+                double L_edd = 4. * M_PI * G_cgs * mass * (m_p*massscale*1e3) * c_cgs / (sigma_T*lenscale_m*lenscale_m*1e4);  // eddington luminosity
+                double R_BHL = 2. * G_cgs * mass / (cs*cs);
                 double R_H = radius * cbrt(q / 3.);
                 double b_H = sqrt(R_BHL * R_H);
                 double mdot_RBHL = M_PI * fmin(R_BHL, b_H) * fmin(R_BHL, fmin(b_H, H)) * cs;
-                double L_RBHL = 0.1 * c_nbody*c_nbody * mdot_RBHL;
+                double L_RBHL = 0.1 * c_cgs*c_cgs * mdot_RBHL;
                 L = fmin(L_RBHL, L_edd);
-                Lc = 4. * M_PI * G * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
-                
+                Lc = 4. * M_PI * G_cgs * mass * density * chi / gamma_coeff;            // critical luminosity given in Grishin et al (2023)
+
                 L_Lc = L / Lc;
+                // printf("%.8e\n", chi);
                 // L_Lc = m_p * c_nbody * gamma_coeff / (sigma_T * chi * density);
                 // printf("\n%.8e %.8e %.8e %.8e %.8e\n", L_edd, L_RBHL, Lc, L/Lc, L_Lc);
             }
@@ -531,17 +530,25 @@ void disk_forces(struct reb_simulation* r){
             double lambda = sqrt(2. * chi / (3. * gamma_coeff * angvel));
             double Gamma_thermal = 1.61 * (gamma_coeff - 1.) / gamma_coeff * x_c / lambda * (L_Lc - 1.) * Gamma_0 / asp_ratio;
             // printf("%.8e\n", x_c / lambda);
+            // printf("%.8e\n", Gamma_thermal / Gamma);
             Gamma += Gamma_thermal;
             // printf("%.8e ", Gamma_thermal);
         }
 
         // now add GW inspiral torque from Peters 1964 and Grishin 2023
-        
-        double Gamma_GW = Gamma_0 * (-32./5. * pow(c_nbody/cs, 3.) * pow(asp_ratio, 6.)) * pow(nondim_rs / (2 * radius), 4.) / (Sigma * radius*radius);
+        double Gamma_GW = Gamma_0 * (-32./5. * pow(c_cgs/cs, 3.) * pow(asp_ratio, 6.)) * pow(r_s*pc_to_m*1e2 / (2. * radius), 4.) * agnmass*M_odot*1e3/ (Sigma * radius*radius);
         Gamma += Gamma_GW;
-        // printf("%.8e\n", Gamma_GW);
-
+        
         double Gamma_mag = Gamma / (mass * radius);         // get the net acceleration on the particle
+        Gamma_mag *= timescale / (velscale*1e2);
+
+        mass *= 1. / (massscale * 1e3); radius *= 1. / (lenscale_m * 1e2);
+        // Gamma *= 1. / (massscale * velscale*velscale);
+        Sigma *= 10 * lenscale_m*lenscale_m*1e4 / (massscale*1e3);
+        angvel *= timescale;
+        stefboltz *= timescale*timescale*timescale / (massscale * 1e3);
+
+        // printf("%.8e\n", -dy * Gamma_mag / radius);
         // add all torques to the acceleration total
         p->ax += -dy * Gamma_mag / radius;
         p->ay += dx * Gamma_mag / radius;
@@ -594,19 +601,19 @@ void disk_forces(struct reb_simulation* r){
 
         // a = -mu / (vel*vel - 2. * mu / radius);
 
-        if (a*(1. - e) < r_isco){     // particle merged with SMBH
-            printf("\nParticle merged with SMBH\n");
-            com.m += mass;
-            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
-            continue;
-        } 
-        if (e > 0.8){
-            printf("\nParticle ejected!, %.4e, %.4e, %d\n", e, mass, i);
-            e = 0;
-            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
-            break; 
-            reb_simulation_synchronize(r);
-        }
+        // if (a*(1. - e) < r_isco){     // particle merged with SMBH
+        //     printf("\nParticle merged with SMBH\n");
+        //     com.m += mass;
+        //     reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+        //     continue;
+        // } 
+        // if (e > 0.8){
+        //     printf("\nParticle ejected!, %.4e, %.4e, %d\n", e, mass, i);
+        //     e = 0;
+        //     reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+        //     break; 
+        //     reb_simulation_synchronize(r);
+        // }
     }
 }
 
@@ -666,8 +673,8 @@ int main(int argc, char* argv[]){
     reb_simulation_start_server(r, 1234);
 
     // Setup simulation features
-    THERMAL_TORQUES             = 1;
-    MIGRATION_PRESCRIPTION      = 1;        // set to jimenez and masset migration torques
+    THERMAL_TORQUES             = 0;
+    MIGRATION_PRESCRIPTION      = 0;        // set to jimenez and masset migration torques
     RAND_BH_MASSES              = 1;        // randomly sample bh masses
     MUTUAL_HILL_PROP            = 0.65;     //
     MERGER_CRITERION            = 1;        // set to Li et al (2023)

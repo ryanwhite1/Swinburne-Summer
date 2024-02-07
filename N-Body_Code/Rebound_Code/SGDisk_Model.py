@@ -212,7 +212,7 @@ def save_disk_model(disk_params, location='', name='', save_all=False):
         if index == 0:
             np.savetxt(filenames[index], np.log10(disk_params[index]), delimiter=',')
         elif index == 13:
-            np.savetxt(filenames[index], np.log10(10**disk_params[11] + 10**disk_params[12]) + 1, delimiter=',')    # +1 to go from cgs to SI
+            np.savetxt(filenames[index], np.log10(10**disk_params[11] + 10**disk_params[12]), delimiter=',')
         else:
             np.savetxt(filenames[index], disk_params[index], delimiter=',')
 
@@ -414,8 +414,9 @@ def plot_many_torques():
     plt.rcParams['mathtext.fontset'] = 'cm'
 
     fig, ax = plt.subplots()
+    # fig2, ax2 = plt.subplots()
 
-    accretion = 0.1
+    accretion = 1
     masses = [1e6, 1e7, 1e8, 1e9]
     fracs = [0.5]
     # alphas = [0.01, 0.1]
@@ -473,12 +474,12 @@ def plot_many_torques():
                     Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
                     Gamma_simp_corot = (0.46 - 0.96 * alpha(r) + 1.8 * beta(r)) / gamma_coeff;
                     Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
-
-                    ### Thermal torques
+                    # if M==1e8 and (5e2 <= r <= 2e3):
+                    #     print(Gamma_0)
+                    ## Thermal torques
                     dPdr = P_deriv(r)
                     x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
                     L = accretion * 4. * np.pi * G_cgs * bh_mass * m_H * c_cgs / thomson_cgs;     # accretion assuming completely ionized hydrogen
-                    # L = accretion * 4 * np.pi * G_cgs * bh_mass * c_cgs / 10**spl_kappa(logr)       # accretion assuming the AGN disk composition
                     # below are equations 17-23 from gilbaum 2022
                     R_BHL = 2 * G_cgs * bh_mass / (H * angvel(r*rs, M))**2
                     R_H = r*rs * np.cbrt(10 / (3 * M))
@@ -491,13 +492,15 @@ def plot_many_torques():
                     # print(L/Lc)
                     lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
                     Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
-                    if M == 1e8:
-                        print(x_c / lambda_)
+
                     ### GR Inspiral torque
                     Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / 10**spl_cs(logr))**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
-                    
+                    # if M==1e8: 
+                    #     print(Gamma_thermal / Gamma)
+                    #     ax2.scatter(r, Gamma_thermal/Gamma, s=1)
                     Gamma += Gamma_thermal + Gamma_GW
                     torques[ii] = Gamma
+                    
                     
                 pos_vals = torques > 0 
                 neg_vals = torques <= 0 
@@ -513,9 +516,10 @@ def plot_many_torques():
     p2 = Line2D([0], [0], color='k', ls='--', label='$-$ve'); handles.append(p2)
     ax.legend(handles=handles)
     ax.grid()
-    fig.savefig('Torque_Model.png', dpi=400, bbox_inches='tight')
+    fig.savefig('Images/Torque_Model.png', dpi=400, bbox_inches='tight')
     fig.savefig('Images/Torque_Model.pdf', dpi=400, bbox_inches='tight')
     
+    # ax2.set(xscale='log')
 
 
 # plot_many_models()
