@@ -626,4 +626,4 @@ def plot_migration_traps(visc):
 
 # plot_many_models()
 # plot_many_torques()
-# plot_migration_traps(0.1)
+# plot_migration_traps(0.01)
