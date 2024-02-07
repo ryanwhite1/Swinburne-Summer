@@ -257,13 +257,13 @@ def plot_many_models():
     plt.rcParams.update({"text.usetex": True})
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['mathtext.fontset'] = 'cm'
-    fig, axes = plt.subplots(nrows=6, sharex=True, figsize=(5, 10), gridspec_kw={'hspace': 0})
-    masses = [1e6, 1e7, 1e8]
+    fig, axes = plt.subplots(nrows=6, sharex=True, figsize=(5, 12), gridspec_kw={'hspace': 0})
+    masses = [1e6, 1e7, 1e8, 1e9]
     fracs = [0.1, 0.5, 1]
     # alphas = [0.01, 0.1]
     alphas = [0.01]
 
-    colours = ['tab:orange', 'tab:red', 'tab:purple']
+    colours = ['tab:orange', 'tab:red', 'tab:purple', 'tab:blue']
     ls = ['-', '--', ':']
     lw = [1, 0.5]
     for i, M in enumerate(masses):
@@ -290,12 +290,13 @@ def plot_many_models():
     from matplotlib.lines import Line2D
     custom_lines1 = [Line2D([0], [0], color=colours[0]),
                      Line2D([0], [0], color=colours[1]),
-                     Line2D([0], [0], color=colours[2])]
+                     Line2D([0], [0], color=colours[2]),
+                     Line2D([0], [0], color=colours[3])]
     custom_lines2 = [Line2D([0], [0], color='k', ls=ls[0]),
                      Line2D([0], [0], color='k', ls=ls[1]),
                      Line2D([0], [0], color='k', ls=ls[2])]
     axes[0].legend(custom_lines1, ['$M=10^6 M_\odot$',
-                   '$M=10^7 M_\odot$', '$M=10^8 M_\odot$'])
+                   '$M=10^7 M_\odot$', '$M=10^8 M_\odot$', '$M=10^9 M_\odot$'])
     axes[-1].legend(custom_lines2, ['$f_{\mathrm{edd}} = 0.1$',
                     '$f_{\mathrm{edd}} = 0.5$', '$f_{\mathrm{edd}} = 1$'])
 
@@ -426,8 +427,6 @@ def plot_many_torques():
     lw = [1, 0.5]
     
     bh_mass = 10 * M_odot_cgs
-    # R_mu = 8.3145 / 2.016
-    R_mu = 8.3145 / (2.016 * m_H * 6.022e23 * 10)
     gamma_coeff = 5/3 
 
     for i, M in enumerate(masses):
@@ -457,7 +456,7 @@ def plot_many_torques():
                     logr = np.log10(r)
                     Gamma_0 = ((10/M) / 10**spl_h(logr))**2 * 10**spl_sigma(logr) * (r*rs)**4 * angvel(r*rs, M)**2
                     
-                    ### Migration from pardekooper
+                    ## Migration from pardekooper
                     # c_v = 14304 / 1000
                     # tau_eff = 3 * 10**spl_tau(logr) / 8 + np.sqrt(3)/4 + 0.25 / 10**spl_tau(logr)
                     # Theta = (c_v * 10**spl_sigma(logr) * angvel(r*rs, M) * tau_eff) / (12. * np.pi * stef_boltz * 10**(3 * spl_temp(logr)));
@@ -493,12 +492,6 @@ def plot_many_torques():
                     
                     ### GR Inspiral torque
                     Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / cs)**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
-                    # if M==1e8 and (1e3 <= r <= 4e3): 
-                        # print(x_c / lambda_)
-                        # print(Gamma_thermal / Gamma)
-                        # print(L/Lc)
-                        # print(chi_chi_c)
-                    #     ax2.scatter(r, Gamma_thermal/Gamma, s=1)
                     Gamma += Gamma_thermal + Gamma_GW
                     torques[ii] = Gamma
                     
@@ -602,14 +595,6 @@ def plot_migration_traps(visc):
                     if torque >= 0:
                         trap_rads[i, j] = log_radii[k]
                         break
-            # fig2, ax2 = plt.subplots()
-            # pos_vals = torques > 0 
-            # neg_vals = torques <= 0 
-            # pos_torques = [torques[iii] if pos_vals[iii] else np.nan for iii in range(len(torques))]
-            # neg_torques = [-torques[iii] if neg_vals[iii] else np.nan for iii in range(len(torques))]
-            # ax2.plot(log_radii, pos_torques, rasterized=True)
-            # ax2.plot(log_radii, neg_torques, ls='--', rasterized=True)
-            # ax2.set(xscale='log', yscale='log')
     x, y = np.meshgrid(masses, fractions)
     from matplotlib.colors import LogNorm
     # from matplotlib import cm, ticker
