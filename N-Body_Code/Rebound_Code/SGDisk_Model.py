@@ -418,7 +418,7 @@ def plot_many_torques():
 
     accretion = 1
     masses = [1e6, 1e7, 1e8, 1e9]
-    fracs = [0.5]
+    fracs = [0.1]
     # alphas = [0.01, 0.1]
     alphas = [0.01]
     colours = ['tab:orange', 'tab:red', 'tab:purple', 'tab:blue']
@@ -475,8 +475,7 @@ def plot_many_torques():
                     Gamma_lindblad = - (2.34 - 0.1 * alpha(r) + 1.5 * beta(r)) * fx;
                     Gamma_simp_corot = (0.46 - 0.96 * alpha(r) + 1.8 * beta(r)) / gamma_coeff;
                     Gamma = Gamma_0 * (Gamma_lindblad + Gamma_simp_corot);
-                    # if M==1e8 and (5e2 <= r <= 2e3):
-                    #     print(Gamma_0)
+                    
                     ## Thermal torques
                     dPdr = P_deriv(r)
                     x_c = dPdr * H**2 / (3 * gamma_coeff * r*rs)
@@ -488,19 +487,17 @@ def plot_many_torques():
                     mdot_RBHL = np.pi * min(R_BHL, b_H) * min(R_BHL, b_H, H) * cs
                     L_RBHL = 0.1 * c_cgs**2 * mdot_RBHL
                     L = min(L_RBHL, L / accretion)
-                    
                     Lc = 4. * np.pi * G_cgs * bh_mass * 10**spl_dens(logr) * chi / gamma_coeff
-                    # print(L/Lc)
                     lambda_ = np.sqrt(2. * chi / (3 * gamma_coeff * angvel(r*rs, M)));
                     Gamma_thermal = 1.61 * (gamma_coeff - 1) / gamma_coeff * x_c / lambda_ * (L/Lc - 1.) * Gamma_0 / 10**spl_h(logr);
                     
                     ### GR Inspiral torque
                     Gamma_GW = Gamma_0 * (-32 / 5 * (c_cgs / cs)**3 * 10**(6 * spl_h(logr)) * (2*r)**-4 * M*M_odot_cgs / (10**spl_sigma(logr) * (r*rs)**2))
-                    if M==1e8 and (1e3 <= r <= 4e3): 
+                    # if M==1e8 and (1e3 <= r <= 4e3): 
                         # print(x_c / lambda_)
                         # print(Gamma_thermal / Gamma)
                         # print(L/Lc)
-                        print(chi_chi_c)
+                        # print(chi_chi_c)
                     #     ax2.scatter(r, Gamma_thermal/Gamma, s=1)
                     Gamma += Gamma_thermal + Gamma_GW
                     torques[ii] = Gamma

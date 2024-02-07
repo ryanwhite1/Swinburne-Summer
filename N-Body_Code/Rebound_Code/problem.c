@@ -114,7 +114,7 @@ double disk_dens(double logr){
     return disk_surfdens(logr) / (2. * disk_aspectratio(logr) * pow(10., logr));
 }
 double disk_angvel(double logr){
-    double omega = sqrt(G_pc * pc_to_m*1e6 * agnmass / pow((pow(10., logr) * r_s * pc_to_m), 3));
+    double omega = sqrt(G_pc * pc_to_m*1e6 * agnmass / pow((pow(10., logr) * r_s * pc_to_m), 3.));
     return omega * timescale;
 }
 double disk_sigma_deriv(double logr){
@@ -491,9 +491,9 @@ void disk_forces(struct reb_simulation* r){
         }
         else if (MIGRATION_PRESCRIPTION == 1){
             // below is thermal diffusivity, chi, over a critical thermal diffusivity value, chi_c
-            chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs);
+            chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs * 10.);  // multiple of 10 in the denominator to fix a bug which I have no idea why exists
             double chi_chi_c = chi / (H*H * angvel);
-            printf("%.8e\n", chi_chi_c);
+            // printf("%.8e\n", chi_chi_c);
             double fx = (sqrt(chi_chi_c / 2.) + 1. / gamma_coeff) / (sqrt(chi_chi_c / 2.) + 1.);
             double Gamma_lindblad = (-2.34 + 0.1 * nabla_sig - 1.5 * nabla_T) * fx;
             double Gamma_simp_corot = (0.46 - 0.96 * nabla_sig + 1.8 * nabla_T) / gamma_coeff;
@@ -503,9 +503,8 @@ void disk_forces(struct reb_simulation* r){
         //// now look at Evgeni's thermal torques
         if (THERMAL_TORQUES == 1){
             double nabla_P = -disk_pressure_deriv(logr);
-            
             if (chi == 0.){
-                chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs);
+                chi = 16. * gamma_coeff * (gamma_coeff - 1.) * stefboltz * temp*temp*temp*temp / (3. * density*density * kappa * cs*cs * 10.);  // multiple of 10 in the denominator to fix a bug which I have no idea why exists
             }
             double x_c = nabla_P * H*H / (3. * gamma_coeff * radius);
             double L_Lc = 0.;      // set our bodies luminosity value to 0 so that it has no effect
@@ -683,7 +682,7 @@ int main(int argc, char* argv[]){
 
     // Initial conditions
     int initial_BH = 10;
-    Nr_s = 1e3;
+    Nr_s = 2e3;
     init_conds(initial_BH, mass, r);
 
     reb_simulation_move_to_com(r);          
