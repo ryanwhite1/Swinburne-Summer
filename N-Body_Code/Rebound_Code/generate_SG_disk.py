@@ -26,5 +26,6 @@ disk_params = disk_model(Mass, f_edd, alpha, b)
 
 save_disk_model(disk_params, location=folder, name=f'M{int(np.log10(Mass))}-f{f_edd:.2f}-a{alpha:.3f}')
 plot_disk_model(disk_params, save=True, location=folder)
+plot_torques(Mass, f_edd, alpha, disk_params, save=True, location=folder)
 
 print("Disk successfully generated.")
