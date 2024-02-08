@@ -335,6 +335,46 @@ void check_mergers(struct reb_simulation* r){
     }
 }
 
+void check_ejections(struct reb_simulation* r){
+    const double G = r->G;
+    int N = r->N;
+    struct reb_particle* const particles = r->particles;
+    struct reb_particle com = particles[0]; // calculate migration forces with respect to center of mass;
+
+    for (int i = 1; i < N; i++){
+        struct reb_particle* p = &(particles[i]); // get the particle
+        int p_hash = p->hash;
+        // first calculate the radius of the particle
+        const double dx = p->x-com.x;
+        const double dy = p->y-com.y;
+        const double dz = p->z-com.z;
+        const double dvx = p->vx-com.vx;
+        const double dvy = p->vy-com.vy;
+        const double dvz = p->vz-com.vz;
+        const double mass = p->m;
+        double radius = sqrt(dx*dx + dy*dy + dz*dz);
+        double mu = G*(com.m + mass);
+        double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
+        const double vr = (dx*dvx + dy*dvy + dz*dvz);   // dot product of v and r
+        double a = - mu / (vel*vel - 2. * mu / radius);            // semi major axis
+        
+        double ex = 1. / mu * ((vel*vel - mu / radius) * dx - vr * dvx);
+        double ey = 1. / mu * ((vel*vel - mu / radius) * dy - vr * dvy);
+        double ez = 1. / mu * ((vel*vel - mu / radius) * dz - vr * dvz);
+        double e = sqrt(ex*ex + ey*ey + ez*ez);
+
+        if (a*(1. - e) < r_isco){     // particle merged with SMBH
+            printf("\nParticle merged with SMBH\n");
+            com.m += mass;
+            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+        } 
+        if (e > 0.8){
+            printf("\nParticle ejected!, %.4e, %.4e, %d\n", e, mass, i);
+            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+        }
+    }
+}
+
 void add_BH(struct reb_simulation* r, double distance){
     num_BH += 1;
     struct reb_particle p = {0};        // initialise BH with no spin
@@ -419,8 +459,10 @@ void output_position_data(struct reb_simulation* r, char* filename){
 }
 
 
+
 void heartbeat(struct reb_simulation* r){
     check_mergers(r);
+    check_ejections(r);
     if(reb_simulation_output_check(r, 20.*M_PI)){
         reb_simulation_output_timing(r, tmax);
     }
@@ -435,11 +477,11 @@ void heartbeat(struct reb_simulation* r){
     }
     if (ADD_BH_RAND_TIME == 0){
         if (reb_simulation_output_check(r, ADD_BH_INTERVAL) && r->t > 0.5){
-            add_BH(r, 4.);
+            add_BH(r, 2.);
         }
     } else if (ADD_BH_RAND_TIME == 1){  // add BHs with exponential distribution
         if (r->t > NEXT_ADD_TIME){
-            add_BH(r, 4.);
+            add_BH(r, 2.);
             NEXT_ADD_TIME += exponential_rv(r, ADD_BH_INTERVAL);
         }
     }
@@ -454,7 +496,6 @@ void disk_forces(struct reb_simulation* r){
 
     for (int i = 1; i < N; i++){
         struct reb_particle* p = &(particles[i]); // get the particle
-        int p_hash = p->hash;
         // first calculate the radius of the particle
         const double dx = p->x-com.x;
         const double dy = p->y-com.y;
@@ -585,19 +626,16 @@ void disk_forces(struct reb_simulation* r){
 
         // a = -mu / (vel*vel - 2. * mu / radius);
 
-        if (a*(1. - e) < r_isco){     // particle merged with SMBH
-            printf("\nParticle merged with SMBH\n");
-            com.m += mass;
-            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
-            continue;
-        } 
-        if (e > 0.8){
-            printf("\nParticle ejected!, %.4e, %.4e, %d\n", e, mass, i);
-            e = 0;
-            reb_simulation_remove_particle_by_hash(r, p_hash, 1);
-            break; 
-            reb_simulation_synchronize(r);
-        }
+        // if (a*(1. - e) < r_isco){     // particle merged with SMBH
+        //     printf("\nParticle merged with SMBH\n");
+        //     com.m += mass;
+        //     reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+        // } 
+        // if (e > 0.8){
+        //     printf("\nParticle ejected!, %.4e, %.4e, %d\n", e, mass, i);
+        //     e = 0;
+        //     reb_simulation_remove_particle_by_hash(r, p_hash, 1);
+        // }
     }
 }
 
@@ -626,7 +664,7 @@ void init_conds(int N, int mass, struct reb_simulation* r){
     // uniformly (and randomly) distribute points in the unit disk
     for (int i = 1; i <= N; i++){   // start from i=1 because we want the SMBH to be at i=0
         double dist = reb_random_uniform(r, 0.5*0.5*0.5, 1.);
-        double R = 4. * pow(dist, 1./3.);
+        double R = 2. * pow(dist, 1./3.);
         add_BH(r, R);
     }
 
@@ -682,7 +720,7 @@ int main(int argc, char* argv[]){
 
     // Initial conditions
     int initial_BH = 10;
-    Nr_s = 2e3;
+    Nr_s = 4e4;
     init_conds(initial_BH, mass, r);
 
     reb_simulation_move_to_com(r);          
