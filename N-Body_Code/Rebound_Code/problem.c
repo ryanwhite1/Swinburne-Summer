@@ -205,6 +205,7 @@ void check_mergers(struct reb_simulation* r){
                     int gen1 = p1->generation, gen2 = p2->generation;
                     p1->generation = fmax(gen1, gen2) + 1;
                     double kick_vel = 0., spin_eff = 0., nondim_spin = 0.;
+                    double binary_incl = 0.;
                     if (MERGER_KICKS == 0){
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
                         double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
@@ -246,6 +247,7 @@ void check_mergers(struct reb_simulation* r){
                         const double Lx = 0.15 * (m1 * Lx_1 + m2 * Lx_2); // add the angular momenta together according to a mass weighting, 
                         const double Ly = 0.15 * (m1 * Ly_1 + m2 * Ly_2); // and take the merger L to be 15% of the initial L
                         const double Lz = 0.15 * (m1 * Lz_1 + m2 * Lz_2);
+                        binary_incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) * 180. / M_PI;     // if this inclination is > 90, then the binary is retrograde w.r.t the disc
                         const double ang_mom_modulus = sqrt(Lx*Lx + Ly*Ly + Lz*Lz);
                         const double unit_Lx = Lx / ang_mom_modulus, unit_Ly = Ly / ang_mom_modulus, unit_Lz = Lz / ang_mom_modulus;
                         double cos_alpha = usx1*usx2 + usy1*usy2 + usz1*usz2;
@@ -334,7 +336,7 @@ void check_mergers(struct reb_simulation* r){
                     } 
                     // now output merger details to file
                     FILE *out_file = fopen(mergers_filename, "a");
-                    fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, m1*agnmass, m2*agnmass, kick_vel, spin_eff, nondim_spin, gen1, gen2, p1->generation);
+                    fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, m1*agnmass, m2*agnmass, kick_vel, binary_incl, spin_eff, nondim_spin, gen1, gen2, p1->generation);
                     fclose(out_file);
                     // now remove particle and end loop
                     reb_simulation_remove_particle(r, j, 1);

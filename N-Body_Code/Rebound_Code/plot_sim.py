@@ -108,8 +108,8 @@ mergers = merger_data.shape[0]
 
 binary_masses = np.array([merger_data[i, 1] + merger_data[i, 2] for i in range(mergers)])
 binary_m_ratio = np.array([min(merger_data[i, 1], merger_data[i, 2]) / max(merger_data[i, 1], merger_data[i, 2]) for i in range(mergers)])
-effective_spins = merger_data[:, 4]
-remnant_spins = merger_data[:, 5]
+effective_spins = merger_data[:, 5]
+remnant_spins = merger_data[:, 6]
 
 fig, ax = plt.subplots()
 n_bins = 10
@@ -138,7 +138,7 @@ for i in range(len(x)):
     for j in range(len(y)):
         z[i, j] = callister(x[i], y[j])
 ax.contourf(x, y, z.T, cmap='binary', alpha=0.3, levels=[0.01, 0.05, 0.16, 0.5, 0.84, 1], antialiased=True)
-cbar = ax.scatter(effective_spins, binary_m_ratio, c=merger_data[:, 8])
+cbar = ax.scatter(effective_spins, binary_m_ratio, c=merger_data[:, 9])
 ax.set(xlabel='$\chi_{eff}$', ylabel='Mass Ratio $q$ ($m_1 / m_2$)', xlim=[-1, 1], ylim=[0, 1])
 # ax.legend()
 fig.colorbar(cbar, label='BH Generation')
