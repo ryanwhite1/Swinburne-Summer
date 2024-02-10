@@ -161,9 +161,10 @@ void check_mergers(struct reb_simulation* r){
         for (int j = i + 1; j < N; j++){
             struct reb_particle* p2 = &(particles[j]); // get the particle
             double m2 = p2->m;
+            const double M = m1 + m2;
             const double dx2 = p2->x-com.x, dy2 = p2->y-com.y, dz2 = p2->z-com.z;
             const double r2 = sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2);
-            double R_mH = pow((m1 + m2) / (3 * com.m), 1./3.) * (r1 + r2) / 2.;   // mutual hill radius
+            double R_mH = pow(M / (3 * com.m), 1./3.) * (r1 + r2) / 2.;   // mutual hill radius
             double dist = sqrt((dx1-dx2)*(dx1-dx2) + (dy1-dy2)*(dy1-dy2) + (dz1-dz2)*(dz1-dz2));
             if (dist < (MUTUAL_HILL_PROP * R_mH)){
                 // now to check if their relative kinetic energy is low enough for capture
@@ -177,9 +178,9 @@ void check_mergers(struct reb_simulation* r){
                     merger = binding_energy < rel_kin_energy;
                 } else if (MERGER_CRITERION == 1){      // criterion based on the results of Li et al 2023
                     double logr = log10(r1 / nondim_rs), Sigma = disk_surfdens(logr);
-                    double cond = (Sigma * r1*r2) / (m1 + m2);
-                    double abs_Ehill = (m1 + m2) / (2. * R_mH);
-                    double E_b = rel_kin_energy / reduced_mass - (m1 + m2) / (0.3 * R_mH);
+                    double cond = (Sigma * r1*r2) / M;
+                    double abs_Ehill = M / (2. * R_mH);
+                    double E_b = rel_kin_energy / reduced_mass - M / (0.3 * R_mH);
                     double mu_crit = 19.1 * E_b / abs_Ehill + 25.6;
                     if (1.3 > mu_crit){
                         mu_crit = 1.3;
@@ -189,19 +190,25 @@ void check_mergers(struct reb_simulation* r){
                 if (merger){
                     puts("\nMerger!");
                     // set p1 as the merger remnant, with velocity and position as the mass-weighted average of the two merged particles
-                    p1->x = (m1 * p1->x + m2 * p2->x) / (m1 + m2);
-                    p1->y = (m1 * p1->y + m2 * p2->y) / (m1 + m2);
-                    p1->z = (m1 * p1->z + m2 * p2->z) / (m1 + m2);
-                    p1->vx = (m1 * p1->vx + m2 * p2->vx) / (m1 + m2);
-                    p1->vy = (m1 * p1->vy + m2 * p2->vy) / (m1 + m2);
-                    p1->vz = (m1 * p1->vz + m2 * p2->vz) / (m1 + m2);
+                    const double com_x = (m1 * p1->x + m2 * p2->x) / M;
+                    const double com_y = (m1 * p1->y + m2 * p2->y) / M;
+                    const double com_z = (m1 * p1->z + m2 * p2->z) / M;
+                    const double com_vx = (m1 * p1->vx + m2 * p2->vx) / M;
+                    const double com_vy = (m1 * p1->vy + m2 * p2->vy) / M;
+                    const double com_vz = (m1 * p1->vz + m2 * p2->vz) / M;
+                    p1->x = com_x;
+                    p1->y = com_y;
+                    p1->z = com_z;
+                    p1->vx = com_vx;
+                    p1->vy = com_vy;
+                    p1->vz = com_vz;
                     int gen1 = p1->generation, gen2 = p2->generation;
                     p1->generation = fmax(gen1, gen2) + 1;
                     double kick_vel = 0., spin_eff = 0., nondim_spin = 0.;
                     if (MERGER_KICKS == 0){
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
                         double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
-                        p1->m = (m1 + m2) * (1. - eps_rad);
+                        p1->m = M * (1. - eps_rad);
                     } else if (MERGER_KICKS == 1 && BH_SPINS == 0){     // include a kick in a random direction
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
                         double A = 1.2 * 1e7 / velscale, B = -0.93;
@@ -215,7 +222,7 @@ void check_mergers(struct reb_simulation* r){
                         p1->vy += yprop; 
                         kick_vel = vel_kick * velscale / 1000.;
                         double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
-                        p1->m = (m1 + m2) * (1. - eps_rad);
+                        p1->m = M * (1. - eps_rad);
                     } else if (MERGER_KICKS == 1 && BH_SPINS == 1){ // include a kick in a semi-analytic direction
                         // physics here modelled from chapter 14.3 of Maggiore, M. 2018, Gravitational Waves: Volume 2: Astrophysics and Cosmology, Gravitational Waves (Oxford University Press)
                         double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
@@ -229,9 +236,16 @@ void check_mergers(struct reb_simulation* r){
                             usx2 = sx2 / spin2_modulus, usy2 = sy2 / spin2_modulus, usz2 = sz2 / spin2_modulus; 
                         }
                         double aa1 = fmax(spin1_modulus, spin2_modulus), aa2 = fmin(spin1_modulus, spin2_modulus);
-                        const double Lx = (dy1 - (dy1 + dy2)/2.) * (dvz1 - (dvz1 + dvz2)/2.) - (dz1 - (dz1 + dz2)/2.) * (dvy1 - (dvy1 + dvy2)/2.);
-                        const double Ly = (dz1 - (dz1 + dz2)/2.) * (dvx1 - (dvx1 + dvx2)/2.) - (dx1 - (dx1 + dx2)/2.) * (dvz1 - (dvz1 + dvz2)/2.);
-                        const double Lz = (dx1 - (dx1 + dx2)/2.) * (dvy1 - (dvy1 + dvy2)/2.) - (dy1 - (dy1 + dy2)/2.) * (dvx1 - (dvx1 + dvx2)/2.);
+                        // define angular momentum vectors for each BH relative to the binary center of mass
+                        const double Lx_1 = (dy1 - com_y) * (dvz1 - com_vz) - (dz1 - com_z) * (dvy1 - com_vy);
+                        const double Ly_1 = (dz1 - com_z) * (dvx1 - com_vx) - (dx1 - com_x) * (dvz1 - com_vz);
+                        const double Lz_1 = (dx1 - com_x) * (dvy1 - com_vy) - (dy1 - com_y) * (dvx1 - com_vx);
+                        const double Lx_2 = (dy2 - com_y) * (dvz2 - com_vz) - (dz2 - com_z) * (dvy2 - com_vy);
+                        const double Ly_2 = (dz2 - com_z) * (dvx2 - com_vx) - (dx2 - com_x) * (dvz2 - com_vz);
+                        const double Lz_2 = (dx2 - com_x) * (dvy2 - com_vy) - (dy2 - com_y) * (dvx2 - com_vx);
+                        const double Lx = 0.15 * (m1 * Lx_1 + m2 * Lx_2); // add the angular momenta together according to a mass weighting, 
+                        const double Ly = 0.15 * (m1 * Ly_1 + m2 * Ly_2); // and take the merger L to be 15% of the initial L
+                        const double Lz = 0.15 * (m1 * Lz_1 + m2 * Lz_2);
                         const double ang_mom_modulus = sqrt(Lx*Lx + Ly*Ly + Lz*Lz);
                         const double unit_Lx = Lx / ang_mom_modulus, unit_Ly = Ly / ang_mom_modulus, unit_Lz = Lz / ang_mom_modulus;
                         double cos_alpha = usx1*usx2 + usy1*usy2 + usz1*usz2;
@@ -720,7 +734,7 @@ int main(int argc, char* argv[]){
 
     // Initial conditions
     int initial_BH = 10;
-    Nr_s = 4e4;
+    Nr_s = 2e3;
     init_conds(initial_BH, mass, r);
 
     reb_simulation_move_to_com(r);          

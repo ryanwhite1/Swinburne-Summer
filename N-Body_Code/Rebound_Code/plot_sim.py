@@ -37,7 +37,7 @@ alpha = float(sys.argv[3])
 folder = f'OUTPUT_M{int(np.log10(SMBHMass))}-f{f_edd:.2f}-a{alpha:.3f}/'
 
 r_s = 2 * 4.3e-3 * SMBHMass / 9e10  # 2GM / c^2     units of pc
-Nr_s = 4e4      # number of schwarzschild radii to initialise the sim with respect to
+Nr_s = 2e3      # number of schwarzschild radii to initialise the sim with respect to
 lenscale = Nr_s * r_s
 rawdata = np.genfromtxt(folder+'orbits.txt')
 N = int(rawdata[:, 1].max())

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-MASS=6
-FEDD=0.1
+MASS=8
+FEDD=0.2
 ALPH=0.01
 
 python3 generate_SG_disk.py $MASS $FEDD $ALPH
