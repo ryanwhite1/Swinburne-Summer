@@ -196,6 +196,12 @@ void check_mergers(struct reb_simulation* r){
                     const double com_vx = (m1 * p1->vx + m2 * p2->vx) / M;
                     const double com_vy = (m1 * p1->vy + m2 * p2->vy) / M;
                     const double com_vz = (m1 * p1->vz + m2 * p2->vz) / M;
+                    // store variables of the primary at binary formation (to calculate a and e later!)
+                    const double dx = p1->x - com_x, dy = p1->y - com_y, dz = p1->z - com_z;
+                    const double dvx = p1->vx - com_vx, dvy = p1->vy - com_vy, dvz = p1->vz - com_vz;
+                    const double radius = sqrt(dx*dx + dy*dy + dz*dz);
+                    const double vr = (dx*dvx + dy*dvy + dz*dvz) / radius;
+                    // now set primary to be at the barycenter of the binary
                     p1->x = com_x;
                     p1->y = com_y;
                     p1->z = com_z;
@@ -334,9 +340,19 @@ void check_mergers(struct reb_simulation* r){
                         }
                         spin_eff = (1. + delta)*chi_1 / 2. + (1. - delta) * chi_2 / 2.;
                     } 
+                    // now calculate semi-major axis and eccentricity of BHs at binary formation
+                    double mu = r->G * M;
+                    double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
+                    double a = -mu / (vel*vel - 2. * mu / radius);            // semi major axis
+                    a *= lenscale_m / 1.496e11;                               // convert to AU
+                    double ex = 1. / mu * ((vel*vel - mu / radius) * dx - radius * vr * dvx );
+                    double ey = 1. / mu * ((vel*vel - mu / radius) * dy - radius * vr * dvy );
+                    double ez = 1. / mu * ((vel*vel - mu / radius) * dz - radius * vr * dvz );
+                    double e = sqrt(ex*ex + ey*ey + ez*ez);
                     // now output merger details to file
                     FILE *out_file = fopen(mergers_filename, "a");
-                    fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, m1*agnmass, m2*agnmass, kick_vel, binary_incl, spin_eff, nondim_spin, gen1, gen2, p1->generation);
+                    // output format: n-body-time || binary-e || binary-a (AU) || m1 (M_odot) || m2 || v_kick (km/s) || binary_incl (deg) || chi_eff || a(spin) || gen1 || gen2 || remnant gen
+                    fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, e, a, m1*agnmass, m2*agnmass, kick_vel, binary_incl, spin_eff, nondim_spin, gen1, gen2, p1->generation);
                     fclose(out_file);
                     // now remove particle and end loop
                     reb_simulation_remove_particle(r, j, 1);
