@@ -132,6 +132,12 @@ double disk_pressure_deriv(double logr){
     return splderiv(log_radii_data, log_pressure_data, log_pressure_spline, n_spline_data, logr);
 }
 
+double time_convert(double time){
+    double G = 6.6743e-11;
+    double Myr_sec = 31536000000000.0;
+    return time * sqrt(lenscale_m*lenscale_m*lenscale_m / (massscale * G)) / Myr_sec;
+}
+
 
 double lognormal_mass(struct reb_simulation* r){
     // box-muller transform for normally distributed random numbers     https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
@@ -173,9 +179,9 @@ void check_mergers(struct reb_simulation* r){
                 double reduced_mass = 1. / (1. / m1 + 1. / m2);
                 double rel_kin_energy = 0.5 * reduced_mass * ((dvx1-dvx2)*(dvx1-dvx2) + (dvy1-dvy2)*(dvy1-dvy2) + (dvz1-dvz2)*(dvz1-dvz2));
                 double binding_energy = m1 * m2 / (2. * R_mH);
-                bool merger = false;
+                bool merger_cond = false, merger = false;
                 if (MERGER_CRITERION == 0){     // classic binding energy < relative kinetic energy
-                    merger = binding_energy < rel_kin_energy;
+                    merger_cond = binding_energy < rel_kin_energy;
                 } else if (MERGER_CRITERION == 1){      // criterion based on the results of Li et al 2023
                     double logr = log10(r1 / nondim_rs), Sigma = disk_surfdens(logr);
                     double cond = (Sigma * r1*r2) / M;
@@ -185,10 +191,9 @@ void check_mergers(struct reb_simulation* r){
                     if (1.3 > mu_crit){
                         mu_crit = 1.3;
                     }
-                    merger = cond > mu_crit;
+                    merger_cond = cond > mu_crit;
                 }
-                if (merger){
-                    puts("\nMerger!");
+                if (merger_cond){
                     // set p1 as the merger remnant, with velocity and position as the mass-weighted average of the two merged particles
                     const double com_x = (m1 * p1->x + m2 * p2->x) / M;
                     const double com_y = (m1 * p1->y + m2 * p2->y) / M;
@@ -201,163 +206,177 @@ void check_mergers(struct reb_simulation* r){
                     const double dvx = p1->vx - com_vx, dvy = p1->vy - com_vy, dvz = p1->vz - com_vz;
                     const double radius = sqrt(dx*dx + dy*dy + dz*dz);
                     const double vr = (dx*dvx + dy*dvy + dz*dvz) / radius;
-                    // now set primary to be at the barycenter of the binary
-                    p1->x = com_x;
-                    p1->y = com_y;
-                    p1->z = com_z;
-                    p1->vx = com_vx;
-                    p1->vy = com_vy;
-                    p1->vz = com_vz;
-                    int gen1 = p1->generation, gen2 = p2->generation;
-                    p1->generation = fmax(gen1, gen2) + 1;
-                    double kick_vel = 0., spin_eff = 0., nondim_spin = 0.;
-                    double binary_incl = 0.;
-                    if (MERGER_KICKS == 0){
-                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
-                        double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
-                        p1->m = M * (1. - eps_rad);
-                    } else if (MERGER_KICKS == 1 && BH_SPINS == 0){     // include a kick in a random direction
-                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
-                        double A = 1.2 * 1e7 / velscale, B = -0.93;
-                        double vel_kick = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * q / (opq*opq));
-                        double angle = reb_random_uniform(r, 0.0, 2.*M_PI);
-                        double xprop = sin(angle);
-                        double yprop = -cos(angle);
-                        double mult = sqrt(vel_kick*vel_kick / (xprop*xprop + yprop*yprop));
-                        xprop *= mult; yprop *= mult;
-                        p1->vx += xprop; 
-                        p1->vy += yprop; 
-                        kick_vel = vel_kick * velscale / 1000.;
-                        double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
-                        p1->m = M * (1. - eps_rad);
-                    } else if (MERGER_KICKS == 1 && BH_SPINS == 1){ // include a kick in a semi-analytic direction
-                        // physics here modelled from chapter 14.3 of Maggiore, M. 2018, Gravitational Waves: Volume 2: Astrophysics and Cosmology, Gravitational Waves (Oxford University Press)
-                        double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
-                        double sx1 = p1->spin_x, sx2 = p2->spin_x, sy1 = p1->spin_y, sy2 = p2->spin_y, sz1 = p1->spin_z, sz2 = p2->spin_z;   
-                        const double spin1_modulus = sqrt(sx1*sx1 + sy1*sy1 + sz1*sz1), spin2_modulus = sqrt(sx2*sx2 + sy2*sy2 + sz2*sz2);
-                        double usx1 = 0., usy1 = 0., usz1 = 0., usx2 = 0., usy2 = 0., usz2 = 0.;
-                        if (spin1_modulus != 0){
-                            usx1 = sx1 / spin1_modulus, usy1 = sy1 / spin1_modulus, usz1 = sz1 / spin1_modulus;
-                        }
-                        if (spin2_modulus != 0){
-                            usx2 = sx2 / spin2_modulus, usy2 = sy2 / spin2_modulus, usz2 = sz2 / spin2_modulus; 
-                        }
-                        double aa1 = fmax(spin1_modulus, spin2_modulus), aa2 = fmin(spin1_modulus, spin2_modulus);
-                        // define angular momentum vectors for each BH relative to the binary center of mass
-                        const double Lx_1 = (dy1 - com_y) * (dvz1 - com_vz) - (dz1 - com_z) * (dvy1 - com_vy);
-                        const double Ly_1 = (dz1 - com_z) * (dvx1 - com_vx) - (dx1 - com_x) * (dvz1 - com_vz);
-                        const double Lz_1 = (dx1 - com_x) * (dvy1 - com_vy) - (dy1 - com_y) * (dvx1 - com_vx);
-                        const double Lx_2 = (dy2 - com_y) * (dvz2 - com_vz) - (dz2 - com_z) * (dvy2 - com_vy);
-                        const double Ly_2 = (dz2 - com_z) * (dvx2 - com_vx) - (dx2 - com_x) * (dvz2 - com_vz);
-                        const double Lz_2 = (dx2 - com_x) * (dvy2 - com_vy) - (dy2 - com_y) * (dvx2 - com_vx);
-                        const double Lx = 0.15 * (m1 * Lx_1 + m2 * Lx_2); // add the angular momenta together according to a mass weighting, 
-                        const double Ly = 0.15 * (m1 * Ly_1 + m2 * Ly_2); // and take the merger L to be 15% of the initial L
-                        const double Lz = 0.15 * (m1 * Lz_1 + m2 * Lz_2);
-                        binary_incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) * 180. / M_PI;     // if this inclination is > 90, then the binary is retrograde w.r.t the disc
-                        const double ang_mom_modulus = sqrt(Lx*Lx + Ly*Ly + Lz*Lz);
-                        const double unit_Lx = Lx / ang_mom_modulus, unit_Ly = Ly / ang_mom_modulus, unit_Lz = Lz / ang_mom_modulus;
-                        double cos_alpha = usx1*usx2 + usy1*usy2 + usz1*usz2;
-                        double cos_beta = usx1*unit_Lx + usy1*unit_Ly + usz1*unit_Lz;
-                        double cos_gamma = usx2*unit_Lx + usy2*unit_Ly + usz2*unit_Lz;
-                        double term1 = -0.129 / ((1. + q*q)*(1. + q*q)) * (aa1*aa1 + aa2*aa2*q*q*q*q + 2.*aa1*aa2*q*q*cos_alpha);
-                        double term2 = (-0.384 * nu - 2.686 + 2.)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
-                        double term3 = 3.464 - 3.454*nu + 2.353*nu*nu;
-                        double l_mag = term1 + term2 + term3;
-                        if (m1 > m2){
-                            p1->spin_x = nu/q * (sx1 + q*q * sx2) + nu * l_mag * unit_Lx;
-                            p1->spin_y = nu/q * (sy1 + q*q * sy2) + nu * l_mag * unit_Ly;
-                            p1->spin_z = nu/q * (sz1 + q*q * sz2) + nu * l_mag * unit_Lz;
-                        } else {
-                            p1->spin_x = nu/q * (sx2 + q*q * sx1) + nu * l_mag * unit_Lx;
-                            p1->spin_y = nu/q * (sy2 + q*q * sy1) + nu * l_mag * unit_Ly;
-                            p1->spin_z = nu/q * (sz2 + q*q * sz1) + nu * l_mag * unit_Lz;
-                        }
-                        nondim_spin = sqrt(p1->spin_x*p1->spin_x + p1->spin_y*p1->spin_y + p1->spin_z*p1->spin_z);
 
-                        // now calculate the new mass of the final BH
-                        // equations from Barausse et al 2012
-                        double const0 = 0.04826, const1 = 0.01559;
-                        double a_tilde = (spin1_modulus * cos_beta + q*q* spin2_modulus * cos_gamma) / (opq*opq);
-                        double Z1 = 1. + pow(1. - a_tilde*a_tilde, 1./3.) * (pow(1. + a_tilde, 1./3.) + pow(1. - a_tilde, 1./3.));
-                        double Z2 = sqrt(3. * a_tilde*a_tilde + Z1*Z1);
-                        double r_eq_isco = 3. + Z2 - copysignl(1.0, a_tilde) * sqrt((3. - Z1)*(3. + Z1 + 2.*Z2));
-                        double E_eq_isco = sqrt(1. - 2./r_eq_isco);
-                        double eps_rad = (1. - E_eq_isco)*nu + 4.*nu*nu*(4.*const0 + 16.*const1*a_tilde*(a_tilde + 1.) + E_eq_isco - 1.);
-                        p1->m = (m1 + m2) * (1. - eps_rad);
-
-                        // now to model the kick
-                        double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
-                        double alpha_rad = atan2(unit_Lz, unit_Lx), beta_rad = atan2(unit_Ly, unit_Lx);
-                        double sina = sin(alpha_rad), sinb = sin(beta_rad), cosa = cos(alpha_rad), cosb = cos(beta_rad);
-
-                        double s_ex1 = cosa*cosb*usx1 - sina*usy1 + cosa*sinb*usz1;
-                        double s_ex2 = cosa*cosb*usx2 - sina*usy2 + cosa*sinb*usz2;
-                        double s_ey1 = sina*cosb*usy1 + cosa*usy1 + sina*sinb*usz1;
-                        double s_ey2 = sina*cosb*usy2 + cosa*usy2 + sina*sinb*usz2;
-                        double s_ez1 = -sinb*usx1 + cosb*usz1;
-                        double s_ez2 = -sinb*usx2 + cosb*usz2;
-
-                        double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
-                        double vel_perp = 0.;
-                        if (m1 > m2){
-                            vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(s_ez1 - q * s_ez2);
-                        } else {
-                            vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(s_ez2 - q * s_ez1);
-                        }
-                        double theta = reb_random_uniform(r, 0.0, 2.*M_PI); // choose random direction for the mass asymmetry kick
-                        double v_kick_e1 = vel_m * cos(theta) - vel_perp * sin(theta);
-                        double v_kick_e2 = vel_m * sin(theta) + vel_perp * cos(theta);
-                        double DEL_e1 = 0., DEL_e2 = 0., a_perp1 = 0., a_perp2 = 0.;
-                        if (m1 > m2){
-                            DEL_e1 = s_ex1 - q * s_ex2, DEL_e2 = s_ey1 - q * s_ey2;
-                            a_perp1 = sqrt(s_ex1*s_ex1 + s_ey1*s_ey1), a_perp2 = sqrt(s_ex2*s_ex2 + s_ey2*s_ey2);
-                        } else {
-                            DEL_e1 = s_ex2 - q * s_ex1, DEL_e2 = s_ey2 - q * s_ey1;
-                            a_perp1 = sqrt(s_ex2*s_ex2 + s_ey2*s_ey2), a_perp2 = sqrt(s_ex1*s_ex1 + s_ey1*s_ey1);
-                        }
-                        double v_kick_e3 = 0.;
-                        if (DEL_e1 != 0 && DEL_e2 != 0){
-                            double THETA = acos((DEL_e1*cos(theta) + DEL_e2*sin(theta)) / (sqrt((DEL_e1*DEL_e1 + DEL_e2*DEL_e2))));
-                            double phase = M_PI / 2.;
-                            v_kick_e3 = D * cos(THETA - phase) * 16*q*q/(opq*opq*opq*opq*opq) * abs(a_perp1 - q * a_perp2);
-                        }
-                        
-                        double rotation_determinant = cosa*cosa*cosb*cosb + sina*sina*sinb*sinb + cosa*cosa*sinb*sinb + sina*sina*cosb*cosb + cosa*cosb*sina*sinb*sinb;
-                        p1->vx += ((cosa*cosb)*v_kick_e1 + (sina*sinb)*v_kick_e2 - (sinb*(sina*sina + cosa*cosa))*v_kick_e3) / rotation_determinant;
-                        p1->vy += (-(sina*(cosb*cosb + sinb*sinb))*v_kick_e1 + (cosa*(cosb*cosb + sinb*sinb))*v_kick_e2) / rotation_determinant;
-                        p1->vz += ((cosa*sinb)*v_kick_e1 + (sina*sinb)*v_kick_e2 + (cosa*cosa*cosb + sina*sina*sinb)*v_kick_e3) / rotation_determinant;
-
-                        kick_vel = sqrt(v_kick_e1*v_kick_e1 + v_kick_e2*v_kick_e2 + v_kick_e3*v_kick_e3) * velscale / 1000.; // total kick velocity in km/s
-                        // now calculate effective spin parameter
-                        double delta = (fmax(m1, m2) - fmin(m1, m2)) / (m1 + m2);
-                        double chi_1 = 0., chi_2 = 0.;
-                        if (m1 > m2){
-                            chi_1 = sx1 * unit_Lx + sy1 * unit_Ly + sz1 * unit_Lz;
-                            chi_2 = sx2 * unit_Lx + sy2 * unit_Ly + sz2 * unit_Lz;
-                        } else {
-                            chi_1 = sx2 * unit_Lx + sy2 * unit_Ly + sz2 * unit_Lz;
-                            chi_2 = sx1 * unit_Lx + sy1 * unit_Ly + sz1 * unit_Lz;
-                        }
-                        spin_eff = (1. + delta)*chi_1 / 2. + (1. - delta) * chi_2 / 2.;
-                    } 
                     // now calculate semi-major axis and eccentricity of BHs at binary formation
                     double mu = r->G * M;
                     double vel = sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
-                    double a = -mu / (vel*vel - 2. * mu / radius);            // semi major axis
-                    a *= lenscale_m / 1.496e11;                               // convert to AU
+                    double a_nbody = -mu / (vel*vel - 2. * mu / radius);            // semi major axis
+                    double a_AU = a_nbody * lenscale_m / 1.496e11;                               // convert to AU
                     double ex = 1. / mu * ((vel*vel - mu / radius) * dx - radius * vr * dvx );
                     double ey = 1. / mu * ((vel*vel - mu / radius) * dy - radius * vr * dvy );
                     double ez = 1. / mu * ((vel*vel - mu / radius) * dz - radius * vr * dvz );
                     double e = sqrt(ex*ex + ey*ey + ez*ez);
-                    // now output merger details to file
-                    FILE *out_file = fopen(mergers_filename, "a");
-                    // output format: n-body-time || binary-e || binary-a (AU) || m1 (M_odot) || m2 || v_kick (km/s) || binary_incl (deg) || chi_eff || a(spin) || gen1 || gen2 || remnant gen
-                    fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, e, a, m1*agnmass, m2*agnmass, kick_vel, binary_incl, spin_eff, nondim_spin, gen1, gen2, p1->generation);
-                    fclose(out_file);
-                    // now remove particle and end loop
-                    reb_simulation_remove_particle(r, j, 1);
-                    break_check = 1;
-                    break;
+
+                    // now check to see if they should merge within the age of the universe
+                    // use the formula from Mandel (2021)
+                    double T_c = 5. * pow(c_nbody, 5.) * pow(a_nbody, 4.) / (256. * pow(r->G, 3.) * m1*m2 * M);
+                    double T = T_c * (1. + 0.27 * pow(e, 10.) + 0.33 * pow(e, 20.) + 0.2 * pow(e, 1000.)) * pow((1. - e*e), 3.5);
+
+                    if (time_convert(T) <= 13800){
+                        merger = true;
+                    }
+                    
+                    if (merger){
+                        puts("\nMerger!");
+                        // now set primary to be at the barycenter of the binary
+                        p1->x = com_x;
+                        p1->y = com_y;
+                        p1->z = com_z;
+                        p1->vx = com_vx;
+                        p1->vy = com_vy;
+                        p1->vz = com_vz;
+                        int gen1 = p1->generation, gen2 = p2->generation;
+                        p1->generation = fmax(gen1, gen2) + 1;
+                        double kick_vel = 0., spin_eff = 0., nondim_spin = 0.;
+                        double binary_incl = 0.;
+                        if (MERGER_KICKS == 0){
+                            double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
+                            double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
+                            p1->m = M * (1. - eps_rad);
+                        } else if (MERGER_KICKS == 1 && BH_SPINS == 0){     // include a kick in a random direction
+                            double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
+                            double A = 1.2 * 1e7 / velscale, B = -0.93;
+                            double vel_kick = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * q / (opq*opq));
+                            double angle = reb_random_uniform(r, 0.0, 2.*M_PI);
+                            double xprop = sin(angle);
+                            double yprop = -cos(angle);
+                            double mult = sqrt(vel_kick*vel_kick / (xprop*xprop + yprop*yprop));
+                            xprop *= mult; yprop *= mult;
+                            p1->vx += xprop; 
+                            p1->vy += yprop; 
+                            kick_vel = vel_kick * velscale / 1000.;
+                            double eps_rad = nu * (1. - 4. * nu) * (1. - 2.*sqrt(2.)/3.) + 0.048 * (4.*nu)*(4.*nu);
+                            p1->m = M * (1. - eps_rad);
+                        } else if (MERGER_KICKS == 1 && BH_SPINS == 1){ // include a kick in a semi-analytic direction
+                            // physics here modelled from chapter 14.3 of Maggiore, M. 2018, Gravitational Waves: Volume 2: Astrophysics and Cosmology, Gravitational Waves (Oxford University Press)
+                            double q = fmin(m1 / m2, m2 / m1), opq = 1. + q, nu = q / (opq*opq);
+                            double sx1 = p1->spin_x, sx2 = p2->spin_x, sy1 = p1->spin_y, sy2 = p2->spin_y, sz1 = p1->spin_z, sz2 = p2->spin_z;   
+                            const double spin1_modulus = sqrt(sx1*sx1 + sy1*sy1 + sz1*sz1), spin2_modulus = sqrt(sx2*sx2 + sy2*sy2 + sz2*sz2);
+                            double usx1 = 0., usy1 = 0., usz1 = 0., usx2 = 0., usy2 = 0., usz2 = 0.;
+                            if (spin1_modulus != 0){
+                                usx1 = sx1 / spin1_modulus, usy1 = sy1 / spin1_modulus, usz1 = sz1 / spin1_modulus;
+                            }
+                            if (spin2_modulus != 0){
+                                usx2 = sx2 / spin2_modulus, usy2 = sy2 / spin2_modulus, usz2 = sz2 / spin2_modulus; 
+                            }
+                            double aa1 = fmax(spin1_modulus, spin2_modulus), aa2 = fmin(spin1_modulus, spin2_modulus);
+                            // define angular momentum vectors for each BH relative to the binary center of mass
+                            const double Lx_1 = (dy1 - com_y) * (dvz1 - com_vz) - (dz1 - com_z) * (dvy1 - com_vy);
+                            const double Ly_1 = (dz1 - com_z) * (dvx1 - com_vx) - (dx1 - com_x) * (dvz1 - com_vz);
+                            const double Lz_1 = (dx1 - com_x) * (dvy1 - com_vy) - (dy1 - com_y) * (dvx1 - com_vx);
+                            const double Lx_2 = (dy2 - com_y) * (dvz2 - com_vz) - (dz2 - com_z) * (dvy2 - com_vy);
+                            const double Ly_2 = (dz2 - com_z) * (dvx2 - com_vx) - (dx2 - com_x) * (dvz2 - com_vz);
+                            const double Lz_2 = (dx2 - com_x) * (dvy2 - com_vy) - (dy2 - com_y) * (dvx2 - com_vx);
+                            const double Lx = 0.15 * (m1 * Lx_1 + m2 * Lx_2); // add the angular momenta together according to a mass weighting, 
+                            const double Ly = 0.15 * (m1 * Ly_1 + m2 * Ly_2); // and take the merger L to be 15% of the initial L
+                            const double Lz = 0.15 * (m1 * Lz_1 + m2 * Lz_2);
+                            binary_incl = acos(Lz / sqrt(Lx*Lx + Ly*Ly + Lz*Lz)) * 180. / M_PI;     // if this inclination is > 90, then the binary is retrograde w.r.t the disc
+                            const double ang_mom_modulus = sqrt(Lx*Lx + Ly*Ly + Lz*Lz);
+                            const double unit_Lx = Lx / ang_mom_modulus, unit_Ly = Ly / ang_mom_modulus, unit_Lz = Lz / ang_mom_modulus;
+                            double cos_alpha = usx1*usx2 + usy1*usy2 + usz1*usz2;
+                            double cos_beta = usx1*unit_Lx + usy1*unit_Ly + usz1*unit_Lz;
+                            double cos_gamma = usx2*unit_Lx + usy2*unit_Ly + usz2*unit_Lz;
+                            double term1 = -0.129 / ((1. + q*q)*(1. + q*q)) * (aa1*aa1 + aa2*aa2*q*q*q*q + 2.*aa1*aa2*q*q*cos_alpha);
+                            double term2 = (-0.384 * nu - 2.686 + 2.)/(1. + q*q) * (aa1*cos_beta + aa2*q*q*cos_gamma);
+                            double term3 = 3.464 - 3.454*nu + 2.353*nu*nu;
+                            double l_mag = term1 + term2 + term3;
+                            if (m1 > m2){
+                                p1->spin_x = nu/q * (sx1 + q*q * sx2) + nu * l_mag * unit_Lx;
+                                p1->spin_y = nu/q * (sy1 + q*q * sy2) + nu * l_mag * unit_Ly;
+                                p1->spin_z = nu/q * (sz1 + q*q * sz2) + nu * l_mag * unit_Lz;
+                            } else {
+                                p1->spin_x = nu/q * (sx2 + q*q * sx1) + nu * l_mag * unit_Lx;
+                                p1->spin_y = nu/q * (sy2 + q*q * sy1) + nu * l_mag * unit_Ly;
+                                p1->spin_z = nu/q * (sz2 + q*q * sz1) + nu * l_mag * unit_Lz;
+                            }
+                            nondim_spin = sqrt(p1->spin_x*p1->spin_x + p1->spin_y*p1->spin_y + p1->spin_z*p1->spin_z);
+
+                            // now calculate the new mass of the final BH
+                            // equations from Barausse et al 2012
+                            double const0 = 0.04826, const1 = 0.01559;
+                            double a_tilde = (spin1_modulus * cos_beta + q*q* spin2_modulus * cos_gamma) / (opq*opq);
+                            double Z1 = 1. + pow(1. - a_tilde*a_tilde, 1./3.) * (pow(1. + a_tilde, 1./3.) + pow(1. - a_tilde, 1./3.));
+                            double Z2 = sqrt(3. * a_tilde*a_tilde + Z1*Z1);
+                            double r_eq_isco = 3. + Z2 - copysignl(1.0, a_tilde) * sqrt((3. - Z1)*(3. + Z1 + 2.*Z2));
+                            double E_eq_isco = sqrt(1. - 2./r_eq_isco);
+                            double eps_rad = (1. - E_eq_isco)*nu + 4.*nu*nu*(4.*const0 + 16.*const1*a_tilde*(a_tilde + 1.) + E_eq_isco - 1.);
+                            p1->m = (m1 + m2) * (1. - eps_rad);
+
+                            // now to model the kick
+                            double A = 1.2e7 / velscale, B = -0.93, C = 4.57e5 / velscale, D = 3.75e6 / velscale;
+                            double alpha_rad = atan2(unit_Lz, unit_Lx), beta_rad = atan2(unit_Ly, unit_Lx);
+                            double sina = sin(alpha_rad), sinb = sin(beta_rad), cosa = cos(alpha_rad), cosb = cos(beta_rad);
+
+                            double s_ex1 = cosa*cosb*usx1 - sina*usy1 + cosa*sinb*usz1;
+                            double s_ex2 = cosa*cosb*usx2 - sina*usy2 + cosa*sinb*usz2;
+                            double s_ey1 = sina*cosb*usy1 + cosa*usy1 + sina*sinb*usz1;
+                            double s_ey2 = sina*cosb*usy2 + cosa*usy2 + sina*sinb*usz2;
+                            double s_ez1 = -sinb*usx1 + cosb*usz1;
+                            double s_ez2 = -sinb*usx2 + cosb*usz2;
+
+                            double vel_m = A * q*q*(1. - q) / (opq*opq*opq*opq*opq) * (1. + B * nu);
+                            double vel_perp = 0.;
+                            if (m1 > m2){
+                                vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(s_ez1 - q * s_ez2);
+                            } else {
+                                vel_perp = C * 16. * q*q / (opq*opq*opq*opq*opq) * abs(s_ez2 - q * s_ez1);
+                            }
+                            double theta = reb_random_uniform(r, 0.0, 2.*M_PI); // choose random direction for the mass asymmetry kick
+                            double v_kick_e1 = vel_m * cos(theta) - vel_perp * sin(theta);
+                            double v_kick_e2 = vel_m * sin(theta) + vel_perp * cos(theta);
+                            double DEL_e1 = 0., DEL_e2 = 0., a_perp1 = 0., a_perp2 = 0.;
+                            if (m1 > m2){
+                                DEL_e1 = s_ex1 - q * s_ex2, DEL_e2 = s_ey1 - q * s_ey2;
+                                a_perp1 = sqrt(s_ex1*s_ex1 + s_ey1*s_ey1), a_perp2 = sqrt(s_ex2*s_ex2 + s_ey2*s_ey2);
+                            } else {
+                                DEL_e1 = s_ex2 - q * s_ex1, DEL_e2 = s_ey2 - q * s_ey1;
+                                a_perp1 = sqrt(s_ex2*s_ex2 + s_ey2*s_ey2), a_perp2 = sqrt(s_ex1*s_ex1 + s_ey1*s_ey1);
+                            }
+                            double v_kick_e3 = 0.;
+                            if (DEL_e1 != 0 && DEL_e2 != 0){
+                                double THETA = acos((DEL_e1*cos(theta) + DEL_e2*sin(theta)) / (sqrt((DEL_e1*DEL_e1 + DEL_e2*DEL_e2))));
+                                double phase = M_PI / 2.;
+                                v_kick_e3 = D * cos(THETA - phase) * 16*q*q/(opq*opq*opq*opq*opq) * abs(a_perp1 - q * a_perp2);
+                            }
+                            
+                            double rotation_determinant = cosa*cosa*cosb*cosb + sina*sina*sinb*sinb + cosa*cosa*sinb*sinb + sina*sina*cosb*cosb + cosa*cosb*sina*sinb*sinb;
+                            p1->vx += ((cosa*cosb)*v_kick_e1 + (sina*sinb)*v_kick_e2 - (sinb*(sina*sina + cosa*cosa))*v_kick_e3) / rotation_determinant;
+                            p1->vy += (-(sina*(cosb*cosb + sinb*sinb))*v_kick_e1 + (cosa*(cosb*cosb + sinb*sinb))*v_kick_e2) / rotation_determinant;
+                            p1->vz += ((cosa*sinb)*v_kick_e1 + (sina*sinb)*v_kick_e2 + (cosa*cosa*cosb + sina*sina*sinb)*v_kick_e3) / rotation_determinant;
+
+                            kick_vel = sqrt(v_kick_e1*v_kick_e1 + v_kick_e2*v_kick_e2 + v_kick_e3*v_kick_e3) * velscale / 1000.; // total kick velocity in km/s
+                            // now calculate effective spin parameter
+                            double delta = (fmax(m1, m2) - fmin(m1, m2)) / (m1 + m2);
+                            double chi_1 = 0., chi_2 = 0.;
+                            if (m1 > m2){
+                                chi_1 = sx1 * unit_Lx + sy1 * unit_Ly + sz1 * unit_Lz;
+                                chi_2 = sx2 * unit_Lx + sy2 * unit_Ly + sz2 * unit_Lz;
+                            } else {
+                                chi_1 = sx2 * unit_Lx + sy2 * unit_Ly + sz2 * unit_Lz;
+                                chi_2 = sx1 * unit_Lx + sy1 * unit_Ly + sz1 * unit_Lz;
+                            }
+                            spin_eff = (1. + delta)*chi_1 / 2. + (1. - delta) * chi_2 / 2.;
+                        } 
+                        // now output merger details to file
+                        FILE *out_file = fopen(mergers_filename, "a");
+                        // output format: n-body-time || binary-e || binary-a (AU) || m1 (M_odot) || m2 || v_kick (km/s) || binary_incl (deg) || chi_eff || a(spin) || gen1 || gen2 || remnant gen
+                        fprintf(out_file, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%d\t%d\t%d\n", r->t, e, a_AU, m1*agnmass, m2*agnmass, kick_vel, binary_incl, spin_eff, nondim_spin, gen1, gen2, p1->generation);
+                        fclose(out_file);
+                        // now remove particle and end loop
+                        reb_simulation_remove_particle(r, j, 1);
+                        break_check = 1;
+                        break;
+                    }
                 }
             }
         }
