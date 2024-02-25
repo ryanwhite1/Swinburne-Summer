@@ -433,7 +433,7 @@ void add_BH(struct reb_simulation* r, double distance){
     double R = distance;
     p.x = R * cos(theta); // x
     p.y = R * sin(theta); // y
-    p.z = 0.1 * R * reb_random_uniform(r, -1., 1.); // z
+    p.z = 0.25 * R * reb_random_uniform(r, -1., 1.); // z   --  want some appreciable height from orbital plane. this is ~15deg inclination (ish)
     double des_vel = 1. / sqrt(R);
     double angle = atan2(p.y, p.x); // arctan2(y, x)
     double xprop = -sin(angle) * des_vel;
@@ -443,7 +443,7 @@ void add_BH(struct reb_simulation* r, double distance){
     p.vy = yprop; 
     p.vz = zprop;
     if (RAND_BH_MASSES == 0){
-            p.m = 1.0e-7; // 10 solar mass BH.
+            p.m = 10. / agnmass; // 10 solar mass BH.
     }
     else if (RAND_BH_MASSES == 1){
         p.m = lognormal_mass(r) / agnmass;
@@ -755,7 +755,6 @@ int main(int argc, char* argv[]){
     MERGER_KICKS                = 1;        //
     ACCRETION                   = 0.1;      // proportion of eddington luminosity onto the satellite BHs
     ADD_BH_RAND_TIME            = 1;        // add BHs with exponential time distribution
-    ADD_BH_INTERVAL             = 1e4;      // add BHs with a mean of 10k time steps
     BH_SPINS                    = 1;        // model spins of BHs during mergers
 
     // now set up integration parameters
@@ -773,8 +772,9 @@ int main(int argc, char* argv[]){
     int initial_BH = 10;
     Nr_s = 2e3;
     init_conds(initial_BH, mass, r);
+    reb_simulation_move_to_com(r);  
 
-    reb_simulation_move_to_com(r);          
+    ADD_BH_INTERVAL             = 2e4 / time_convert(1.);      // add BHs with at a random interval with a mean of 20000yrs 
 
     // delete previous output files
     remove(orbits_filename); 
