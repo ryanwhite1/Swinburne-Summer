@@ -133,9 +133,12 @@ double disk_pressure_deriv(double logr){
 }
 
 double time_convert(double time){
-    double G = 6.6743e-11;
-    double Myr_sec = 31536000000000.0;
+    const double G = 6.6743e-11, Myr_sec = 31536000000000.0;
     return time * sqrt(lenscale_m*lenscale_m*lenscale_m / (massscale * G)) / Myr_sec;
+}
+double inverse_time_convert(double time){
+    const double G = 6.6743e-11, Myr_sec = 31536000000000.0;
+    return time * Myr_sec / sqrt(lenscale_m*lenscale_m*lenscale_m / (massscale * G));
 }
 
 
@@ -761,20 +764,21 @@ int main(int argc, char* argv[]){
     // r->integrator           = REB_INTEGRATOR_BS;
     r->integrator           = REB_INTEGRATOR_IAS15;
     // r->ri_ias15.epsilon     = 5e-10;
-    r->dt                   = 5e-3;    
+    // r->dt                   = 5e-3;    
     r->additional_forces    = disk_forces;     //Set function pointer to add dissipative forces.
     r->heartbeat            = heartbeat;        // checks for mergers and outputs data
     r->force_is_velocity_dependent = 1;
-    tmax                    = 80000.;       // multiply by ~1.4 to get the approximate number of years (1e8M SMBH)
-    r->rand_seed            = 2399;
+    r->rand_seed            = 2031999;
 
     // Initial conditions
     int initial_BH = 10;
     Nr_s = 2e3;
-    init_conds(initial_BH, mass, r);
-    reb_simulation_move_to_com(r);  
+    init_conds(initial_BH, mass, r); 
 
-    ADD_BH_INTERVAL             = 2e4 / time_convert(1.);      // add BHs with at a random interval with a mean of 20000yrs 
+    tmax                    = inverse_time_convert(2.);         // convert from our desired sim time (in Myr) to nbody units
+    ADD_BH_INTERVAL         = inverse_time_convert(0.05);       // add BHs with at a random interval with a mean of 20000yrs
+    printf("\nSimulating for %.1e N-body time, adding a BH every ~%.1e steps.\n", tmax, ADD_BH_INTERVAL);
+    reb_simulation_move_to_com(r); 
 
     // delete previous output files
     remove(orbits_filename); 
